@@ -21,7 +21,7 @@ const actions: ActionClient = {
 };
 
 function config(port: number): AgentConfig {
-  return { platformUrl: `http://127.0.0.1:${port}`, targetId: 'vm-1', agentKey: 'test-key', targetType: 'virtual_machine', connectorVersion: '0.0.1-experimental.2', snapshotIntervalMs: 10_000, minSnapshotIntervalMs: 10_000, maxSnapshotIntervalMs: 3_600_000, maxSnapshotBytes: 65_536, minSnapshotBytes: 16_384, maxRemoteSnapshotBytes: 1_048_576, logLevel: 'error', collectorMode: 'mock', allowedLogUnits: [], writeEnabled: false, helperSocketPath: '/missing', allowInsecureTransport: true };
+  return { platformUrl: `http://127.0.0.1:${port}`, targetId: 'vm-1', agentKey: 'test-key', targetType: 'virtual_machine', connectorVersion: '0.0.1-experimental.2', snapshotIntervalMs: 10_000, minSnapshotIntervalMs: 10_000, maxSnapshotIntervalMs: 3_600_000, maxSnapshotBytes: 65_536, minSnapshotBytes: 16_384, maxRemoteSnapshotBytes: 1_048_576, logLevel: 'error', collectorMode: 'mock', allowedLogUnits: [], writeEnabled: false, mockActionsEnabled: false, helperSocketPath: '/missing', allowInsecureTransport: true };
 }
 
 describe('AgentV WebSocket lifecycle', () => {

@@ -12,8 +12,9 @@ afterEach(() => { for (const name of Object.keys(process.env).filter((value) => 
 describe('loadConfig', () => {
   it('loads secure, read-only production defaults from package metadata', () => {
     base(); const config = loadConfig();
-    expect(config.connectorVersion).toBe('0.0.1-experimental.5');
+    expect(config.connectorVersion).toBe('0.0.1-experimental.6');
     expect(config.writeEnabled).toBe(false);
+    expect(config.mockActionsEnabled).toBe(false);
     expect(config.allowedLogUnits).toEqual([]);
     expect(config.snapshotIntervalMs).toBe(60_000);
   });
@@ -29,6 +30,15 @@ describe('loadConfig', () => {
     base({ ACORNOPS_VM_ALLOWED_LOG_UNITS: 'ssh.service,ssh.service' }); expect(() => loadConfig()).toThrow('duplicate');
     base({ ACORNOPS_VM_ALLOWED_LOG_UNITS: 'ssh.service,*' }); expect(() => loadConfig()).toThrow('exact .service');
     base({ ACORNOPS_AGENT_WRITE_ENABLED: 'sometimes' }); expect(() => loadConfig()).toThrow('boolean');
+    base({ ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED: 'sometimes' }); expect(() => loadConfig()).toThrow('boolean');
+  });
+  it('permits mock restart actions only with an explicit mock write configuration', () => {
+    base({ ACORNOPS_VM_COLLECTOR_MODE: 'mock', ACORNOPS_AGENT_WRITE_ENABLED: 'true', ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED: 'true' });
+    expect(loadConfig().mockActionsEnabled).toBe(true);
+    base({ ACORNOPS_VM_COLLECTOR_MODE: 'mock', ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED: 'true' });
+    expect(() => loadConfig()).toThrow('ACORNOPS_AGENT_WRITE_ENABLED=true');
+    base({ ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED: 'true' });
+    expect(() => loadConfig()).toThrow('requires mock collector mode');
   });
   it('rejects credential-bearing URLs and malformed local identifiers', () => {
     base({ ACORNOPS_AGENT_PLATFORM_URL: 'https://user:password@example.com' }); expect(() => loadConfig()).toThrow('must not contain credentials');

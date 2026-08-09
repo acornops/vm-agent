@@ -9,7 +9,7 @@ export interface AgentConfig {
   snapshotIntervalMs: number; minSnapshotIntervalMs: number; maxSnapshotIntervalMs: number;
   maxSnapshotBytes: number; minSnapshotBytes: number; maxRemoteSnapshotBytes: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error'; collectorMode: CollectorMode;
-  allowedLogUnits: string[]; writeEnabled: boolean; helperSocketPath: string;
+  allowedLogUnits: string[]; writeEnabled: boolean; mockActionsEnabled: boolean; helperSocketPath: string;
   allowInsecureTransport: boolean; additionalCaBundleFile?: string;
 }
 
@@ -87,6 +87,11 @@ export function loadConfig(): AgentConfig {
   const maxRemoteSnapshotBytes = intEnv('ACORNOPS_AGENT_MAX_REMOTE_SNAPSHOT_BYTES', 1024 * 1024, minSnapshotBytes, 10 * 1024 * 1024);
   const targetId = env('ACORNOPS_TARGET_ID');
   const agentKey = env('ACORNOPS_AGENT_KEY');
+  const writeEnabled = boolEnv('ACORNOPS_AGENT_WRITE_ENABLED');
+  const mockActionsEnabled = boolEnv('ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED');
+  if (mockActionsEnabled && (collectorMode !== 'mock' || !writeEnabled)) {
+    throw new Error('ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED requires mock collector mode and ACORNOPS_AGENT_WRITE_ENABLED=true');
+  }
   const helperSocketPath = env('ACORNOPS_AGENT_ACTIONS_SOCKET', '/run/acornops-agentv/actions.sock');
   if (targetId.length > 256 || !/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(targetId)) throw new Error('ACORNOPS_TARGET_ID has an invalid format');
   if (agentKey.length > 4096) throw new Error('ACORNOPS_AGENT_KEY exceeds 4096 characters');
@@ -96,7 +101,7 @@ export function loadConfig(): AgentConfig {
     snapshotIntervalMs: intEnv('ACORNOPS_AGENT_SNAPSHOT_INTERVAL_MS', 60_000, minSnapshotIntervalMs, maxSnapshotIntervalMs), minSnapshotIntervalMs, maxSnapshotIntervalMs,
     maxSnapshotBytes: intEnv('ACORNOPS_AGENT_MAX_SNAPSHOT_BYTES', 1024 * 1024, minSnapshotBytes, maxRemoteSnapshotBytes), minSnapshotBytes, maxRemoteSnapshotBytes,
     logLevel: logLevelEnv(), collectorMode,
-    allowedLogUnits: csvEnv('ACORNOPS_VM_ALLOWED_LOG_UNITS'), writeEnabled: boolEnv('ACORNOPS_AGENT_WRITE_ENABLED'),
+    allowedLogUnits: csvEnv('ACORNOPS_VM_ALLOWED_LOG_UNITS'), writeEnabled, mockActionsEnabled,
     helperSocketPath,
     allowInsecureTransport, additionalCaBundleFile,
   };

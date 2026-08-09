@@ -85,6 +85,7 @@ The agent is configured with environment variables:
 | `ACORNOPS_VM_ALLOWED_LOG_UNITS` | Comma-separated exact systemd units accepted by `query_logs`. | Empty |
 | `ACORNOPS_VM_COLLECTOR_MODE` | Collector mode: `live` for Linux/systemd hosts, `mock` for local and CI development. | `live` |
 | `ACORNOPS_AGENT_WRITE_ENABLED` | Locally permit helper-backed writes. The helper policy and remote session must also permit them. | `false` |
+| `ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED` | Simulate an allowlisted `ssh.service` restart for the Docker-only mock fixture. Requires mock collector mode and local writes; never enables production writes. | `false` |
 | `ACORNOPS_AGENT_ACTIONS_SOCKET` | Root-owned action helper socket. | `/run/acornops-agentv/actions.sock` |
 
 ## Local Development
@@ -114,6 +115,7 @@ npm run dev
 ```
 
 Use `ACORNOPS_VM_COLLECTOR_MODE=mock` for local Docker and CI. Use `live` on a Linux host with systemd and journald available.
+Set both `ACORNOPS_AGENT_WRITE_ENABLED=true` and `ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED=true` to try the approval-gated `restart_service` flow against the mock fixture's `ssh.service`. This is a simulation, not a host restart; it preserves the fixture's active/running preconditions and returns a synthetic restart receipt.
 
 ## Systemd Install Assets
 

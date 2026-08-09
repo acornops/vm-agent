@@ -1,5 +1,6 @@
 import { SocketActionClient } from './actions/client.js';
 import { rmSync, writeFileSync } from 'node:fs';
+import { MockActionClient } from './actions/mock.js';
 import { LinuxHostAdapter } from './adapters/linux.js';
 import { MockHostAdapter } from './adapters/mock.js';
 import { loadConfig } from './config.js';
@@ -15,7 +16,7 @@ import { notifyReady, notifyWatchdog } from './systemd-notify.js';
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
 const host = config.collectorMode === 'mock' ? new MockHostAdapter() : new LinuxHostAdapter(config.allowedLogUnits);
-const actions = new SocketActionClient(config.helperSocketPath);
+const actions = config.mockActionsEnabled ? new MockActionClient() : new SocketActionClient(config.helperSocketPath);
 
 if (process.argv[2] === 'doctor') {
   const result = await runDoctor(config, host, actions);

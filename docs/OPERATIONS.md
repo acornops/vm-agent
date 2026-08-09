@@ -92,7 +92,7 @@ The tag release workflow runs a Rocky Linux 9 systemd job on a disposable
 self-hosted runner before publishing. It executes the same bootstrap,
 authentication, same-version rerun, credential replacement, upgrade, rollback,
 and uninstall-preservation checks as the Ubuntu job. Both jobs are release gates
-for `0.0.1-experimental.5`.
+for `0.0.1-experimental.6`.
 
 The installer adds `acornops-agent` to `systemd-journal` when that group exists.
 Run `sudo acornops-agentv-doctor` to verify configuration, binaries, journal
@@ -107,6 +107,11 @@ Writes are disabled by default. To enable one service, set
 `/etc/acornops/agentv-actions.json`, and enable
 `acornops-agentv-actions.socket`. Globs, aliases, AgentV's own units, arbitrary
 commands, sudo, and unrestricted `systemctl` are rejected.
+
+For the Docker-only mock fixture, set both `ACORNOPS_AGENT_WRITE_ENABLED=true`
+and `ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED=true` to simulate a restart of its
+single fixture service, `ssh.service`. This path never contacts systemd or a
+host helper and is rejected outside mock collector mode.
 
 ## Logs And Diagnostics
 

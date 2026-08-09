@@ -13,7 +13,8 @@ operator document describes the same production flow.
 - Control-plane enrollment persistence, public transaction API, and handshake
 - Management-console onboarding, repair, replacement, and secret handling
 - Compose, Helm, release-matrix, OpenAPI, and public documentation wiring
-- Release and staging validation evidence for version `0.0.1-experimental.5`
+- Release and staging validation evidence for the original
+  `0.0.1-experimental.5` candidate
 
 ## Completed audit
 
@@ -57,10 +58,10 @@ operator document describes the same production flow.
 
 ## Release conclusion
 
-The implementation is merge-ready, but production promotion is intentionally
-blocked until `v0.0.1-experimental.5` is published. The release page,
-`install-agentv.sh`, and the AgentV archive currently return HTTP 404. After the
-release workflow passes its live Ubuntu and disposable Rocky Linux 9 systemd
-gates, publish the immutable assets, rerun the deployment published-artifact
-gate, and perform the documented staging power-cycle recovery canary before
-promoting the same matrix.
+The onboarding implementation passed its pre-release audit. The unpublished
+`v0.0.1-experimental.5` workflow was later superseded by
+`v0.0.1-experimental.6` so the required local write-approval fixture could ship
+in the same first production matrix. The immutable `.5` tag remains historical;
+production promotion follows the active `.6` release plan and still requires
+the live Ubuntu and Rocky Linux systemd gates, published-artifact validation,
+and the documented staging power-cycle recovery canary.
