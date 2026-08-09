@@ -1,0 +1,19 @@
+[Unit]
+Description=Recover an incomplete AgentV installation transaction
+After=network-online.target
+Wants=network-online.target
+Before=acornops-agentv.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/acornops-agentv-install-recover
+Restart=on-failure
+RestartSec=30s
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

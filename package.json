@@ -1,6 +1,6 @@
 {
   "name": "@acornops/agentv",
-  "version": "0.0.1-experimental.4",
+  "version": "0.0.1-experimental.5",
   "private": true,
   "type": "module",
   "description": "Outbound-only AcornOps Linux/systemd AgentV",
@@ -19,7 +19,7 @@
     "test:coverage": "vitest run --coverage --exclude src/e2e.spec.ts",
     "test:coverage:all": "vitest run --coverage --coverage.thresholds.lines=75 --coverage.thresholds.functions=60 --coverage.thresholds.branches=55 --coverage.thresholds.statements=65",
     "test:watch": "vitest",
-    "smoke:package": "npm run package:systemd && node scripts/package-smoke.mjs",
+    "smoke:package": "npm run package:systemd && node scripts/package-smoke.mjs && node scripts/bootstrap-smoke.mjs",
     "smoke:systemd": "npm run smoke:package && sudo --preserve-env=CI,AGENTV_SYSTEMD_SMOKE_ALLOW bash scripts/systemd-smoke.sh",
     "contracts:check": "node scripts/check-contracts.mjs",
     "harness:check": "node scripts/check-harness.mjs",

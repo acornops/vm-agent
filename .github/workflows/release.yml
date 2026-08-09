@@ -32,10 +32,27 @@ jobs:
       - name: Run live systemd release gate
         env:
           AGENTV_SYSTEMD_SMOKE_ALLOW: "true"
-        run: npm run smoke:systemd
+        run: sudo --preserve-env=CI,AGENTV_SYSTEMD_SMOKE_ALLOW bash scripts/systemd-smoke.sh
+
+  rocky-systemd-canary:
+    runs-on: [self-hosted, linux, x64, rocky-9, systemd, disposable]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Require the production Node path
+        run: test -x /usr/bin/node && test "$(/usr/bin/node -p "Number(process.versions.node.split('.')[0])")" -ge 22
+      - run: npm ci
+      - run: npm run validate:ci
+      - run: npm run smoke:package
+      - name: Run live Rocky Linux systemd release gate
+        run: sudo env CI=true AGENTV_SYSTEMD_SMOKE_ALLOW=true bash scripts/systemd-smoke.sh
 
   release:
-    needs: validate
+    needs: [validate, rocky-systemd-canary]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,8 +92,8 @@ jobs:
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Build checksummed systemd archive
-        run: npm run package:systemd
+      - name: Build and verify checksummed systemd release assets
+        run: npm run smoke:package
       - name: Generate archive SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -87,10 +104,16 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: release/agentv-${{ steps.version.outputs.version }}.tar.gz
+      - name: Attest bootstrap installer provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release/install-agentv.sh
       - name: Publish immutable release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            release/install-agentv.sh
+            release/install-agentv.sh.sha256
             release/agentv-${{ steps.version.outputs.version }}.tar.gz
             release/agentv-${{ steps.version.outputs.version }}.tar.gz.sha256
             release/agentv-${{ steps.version.outputs.version }}.spdx.json

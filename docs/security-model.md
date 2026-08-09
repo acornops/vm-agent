@@ -8,7 +8,12 @@ Read tools never execute arbitrary shell input. `restart_service` is the only wr
 
 ## Secrets
 
-Agent keys are read from environment variables or systemd environment files and redacted in logs. Keep `/etc/acornops/agentv.env` owned by `root:acornops-agent` with mode `0640`.
+One-use enrollment tokens are accepted only by the bootstrap and exchanged for
+a durable AgentV credential after non-mutating validation. Enrollment tokens,
+transaction secrets, durable credentials, complete generated commands, and
+environment contents must not enter logs. Durable credentials are read from
+the systemd environment file; keep `/etc/acornops/agentv.env` owned by
+`root:acornops-agent` with mode `0640`.
 
 Do not include agent keys, bearer tokens, SSH keys, cloud credentials, or password-like arguments in snapshots, tool responses, or test fixtures.
 

@@ -12,7 +12,7 @@ afterEach(() => { for (const name of Object.keys(process.env).filter((value) => 
 describe('loadConfig', () => {
   it('loads secure, read-only production defaults from package metadata', () => {
     base(); const config = loadConfig();
-    expect(config.connectorVersion).toBe('0.0.1-experimental.4');
+    expect(config.connectorVersion).toBe('0.0.1-experimental.5');
     expect(config.writeEnabled).toBe(false);
     expect(config.allowedLogUnits).toEqual([]);
     expect(config.snapshotIntervalMs).toBe(60_000);

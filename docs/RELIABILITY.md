@@ -14,8 +14,8 @@
 Run `npm run validate`, `npm run test:coverage:all`, and
 `npm run smoke:package` before handoff. Run targeted tests for changes to
 reconnect behavior, snapshot bounding, collector parsing, redaction, and
-JSON-RPC tool handling. Releases additionally require the hosted Ubuntu
-`smoke:systemd` job to pass.
+JSON-RPC tool handling. Releases additionally require the live hosted Ubuntu
+and disposable Rocky Linux 9 systemd jobs to pass.
 
 ## Runtime Signals
 
@@ -46,8 +46,11 @@ The main agent keeps no durable state. The helper retains only bounded action re
   tool-call, and snapshot behavior with enforced aggregate floors.
 - Package smoke validates the exact archive that systemd installs, including its
   checksum, paths, entrypoints, dependency closure, and executable modes.
-- Hosted Ubuntu smoke validates real systemd readiness, doctor checks under the
-  service identity, live collectors, helper policy and idempotency, upgrade,
-  rollback, and preservation during uninstall.
-- RHEL-family parser behavior uses replay fixtures. Broad RHEL rollout still
-  requires the same live smoke on a suitable systemd runner.
+- Hosted Ubuntu and disposable Rocky Linux 9 smoke install through the packaged
+  bootstrap and validate real systemd readiness, doctor checks under the
+  service identity, live collectors, transactional replacement and recovery,
+  helper policy and idempotency, upgrade, rollback, and uninstall preservation.
+- The smoke invokes the boot-recovery helper against committed, uncommitted,
+  unreachable, and closed-grace states. Production promotion still requires a
+  staging VM power-cycle with an incomplete transaction marker on each
+  documented OS family.

@@ -123,9 +123,25 @@ Systemd packaging assets live in [`packaging/systemd`](packaging/systemd):
 - `acornops-agentv-actions.socket` and `.service`: disabled-by-default privileged helper.
 - `agentv.env.example`: environment file template.
 - `agentv-actions.json.example`: empty exact-unit helper policy.
-- `install.sh` and `uninstall.sh`: install helpers for the service assets.
+- `install.sh`, `install-worker.sh`, and `uninstall.sh`: transactional install helpers for the service assets.
+- `acornops-agentv-install-recover` and its unit: boot recovery for interrupted cutovers.
+
+Tagged releases also publish `install-agentv.sh` and its checksum. The
+control plane generates a version-pinned bootstrap command that downloads the
+matching archive and checksum, verifies the archive, runs `install.sh`, writes
+the target configuration, runs the doctor, and starts the service. The
+bootstrap is safe to rerun for the same version, upgrades, and explicit
+credential replacement. Initial and replacement commands exchange a 15-minute
+one-use enrollment token; repair and upgrade reuse the protected local
+credential.
 
 Runtime configuration belongs in `/etc/acornops/agentv.env`. Keep that file owned by `root:acornops-agent` with mode `0640` because it contains the agent key.
+
+The initial bootstrap requires the host trust store to validate both artifact
+and platform HTTPS endpoints. An optional
+`ACORNOPS_AGENT_ADDITIONAL_CA_BUNDLE_FILE` runtime setting is preserved across
+repair, upgrade, and credential replacement; it does not replace initial host
+trust and never disables TLS verification.
 
 Run `acornops-agentv-doctor` after installation. Releases live under
 `/opt/acornops/agentv/releases/<version>` and `current` changes atomically, so
@@ -134,6 +150,8 @@ rollback is a symlink switch followed by a service restart.
 The systemd archive bundles its production Node dependencies and uses the
 target host's `/usr/bin/systemd-notify` for watchdog notifications. No
 target-side `npm install`, compiler, or native addon build is required.
+Node.js 22 or newer must already be installed at `/usr/bin/node`; the bootstrap
+does not add package repositories or modify host packages.
 
 ## Validation
 

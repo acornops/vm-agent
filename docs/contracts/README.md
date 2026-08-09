@@ -10,6 +10,11 @@ intentionally replaces the prototype tool, result, and snapshot contracts.
 | `agentv` | `control-plane` | handshake, heartbeat, compressed snapshot, `tools/list`, `tools/call` | Coordinated breaking contract; no v1 aliases or dual envelopes. |
 | `control-plane` | `agentv` | authenticated session policy and bounded snapshot config | AgentV rejects incomplete, stale, mismatched, or out-of-local-bounds handshake responses. |
 
+The systemd distribution surface publishes a versioned bootstrap script,
+archive, checksum, and SBOM under `<release-base-url>/v<version>/<asset>`.
+Generated onboarding commands must pin the exact version and the bootstrap must
+verify the archive checksum before invoking the packaged systemd installer.
+
 ## Handshake
 
 AgentV connects with `x-connector-version: agentv/<package-version>` and sends
@@ -18,6 +23,11 @@ the fixed-ID `lifecycle/handshake` request with `targetId`,
 capabilities, and Linux/systemd host features. It exposes no
 tools, snapshots, or heartbeats until the response matches the target and
 contains a non-empty `workspaceId` plus a complete `sessionPolicy`.
+
+Pending enrollment credentials receive a provisional response. AgentV uses it
+only to prove local runtime readiness, exposes no tools or telemetry, and
+reconnects until the installer commits the credential. Normal readiness is
+recorded only after a non-provisional authenticated handshake.
 
 The installed tool policy is the intersection of compiled tools, remote
 `allowedTools`, remote write enablement, local write enablement, and helper

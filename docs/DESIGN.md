@@ -6,7 +6,11 @@ The AgentV should be boring to operate on production hosts: outbound-only, read-
 
 ## Interaction Model
 
-Operators register a VM target in the control plane, install the agent on the VM, provide the target id and agent key through a protected environment file, and observe host health through snapshots and read-only diagnostic tools.
+Operators register a VM target and run one version-pinned command containing a
+short-lived enrollment token. The root installer exchanges it for the durable,
+target-bound credential stored in the protected environment file. Repair and
+upgrade reuse that credential; replacement is a provisional, rollback-safe
+transaction.
 
 The control plane requests diagnostics through JSON-RPC. The AgentV returns bounded host data and does not expose a general shell, package manager, process control, or service restart interface.
 

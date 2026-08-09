@@ -2,19 +2,30 @@
   "repo": "agentv",
   "version": 1,
   "runtimeDependencies": ["control-plane"],
+  "systemdRelease": {
+    "assets": [
+      "install-agentv.sh",
+      "install-agentv.sh.sha256",
+      "agentv-<version>.tar.gz",
+      "agentv-<version>.tar.gz.sha256",
+      "agentv-<version>.spdx.json"
+    ],
+    "layout": "<release-base-url>/v<version>/<asset>",
+    "bootstrapConfig": ["platformUrl", "targetId", "enrollmentToken?", "replaceCredential?"]
+  },
   "counterparts": {
     "control-plane": {
       "contractVersion": 2,
       "agentHeaders": ["x-agent-key", "x-connector-version"],
       "connectorVersionHeader": "agentv/<package-version>; required, validated against agentType, and persisted as last_connector_version",
       "handshakeRequestFields": [
-        "agentKey", "targetId", "targetType", "agentType",
+        "targetId", "targetType", "agentType",
         "supportedCapabilities", "hostFeatures.osFamily", "hostFeatures.serviceManager",
         "hostFeatures.helperReachable", "hostFeatures.restartServices",
         "advertisedTools[].name", "advertisedTools[].capability"
       ],
       "handshakeResponseFields": [
-        "workspaceId", "targetId", "targetType", "sessionPolicy.allowedTools",
+        "workspaceId", "targetId", "targetType", "provisional?", "sessionPolicy.allowedTools",
         "sessionPolicy.writeEnabled", "config.snapshotInterval", "config.maxSnapshotBytes"
       ],
       "snapshotFields": [

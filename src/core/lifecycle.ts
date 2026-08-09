@@ -33,6 +33,9 @@ export class LifecycleManager {
   constructor(
     private readonly config: AgentConfig, private readonly host: HostAdapter, private readonly actions: ActionClient,
     private readonly router: McpRouter, private readonly logger: Logger, metrics: Observability,
+    private readonly sessionState: { authenticated: () => void; disconnected: () => void } = {
+      authenticated: () => undefined, disconnected: () => undefined
+    },
   ) {
     this.transport = new WebSocketClient(config, logger, metrics);
     this.snapshots = new SnapshotManager(host, (payload) => this.ready && this.transport.send(payload), logger, metrics);
@@ -67,7 +70,7 @@ export class LifecycleManager {
       .filter((tool) => tool.capability === 'read' || this.helperReady)
       .map((tool) => ({ name: tool.name, capability: tool.capability }));
     const handshake = createRequest('lifecycle/handshake', {
-      targetId: this.config.targetId, targetType: 'virtual_machine', agentType: 'agentv', agentKey: this.config.agentKey,
+      targetId: this.config.targetId, targetType: 'virtual_machine', agentType: 'agentv',
       supportedCapabilities, advertisedTools,
       hostFeatures: { osFamily: 'linux', serviceManager: 'systemd', helperReachable: this.helperReady, restartServices: helperServices },
     }, HANDSHAKE_ID);
@@ -113,18 +116,25 @@ export class LifecycleManager {
       this.logger.warn({}, 'Handshake response contract rejected'); this.transport.forceReconnect(); return;
     }
     if (this.handshakeDeadline) clearTimeout(this.handshakeDeadline); this.handshakeDeadline = null;
+    if (result.provisional === true) {
+      this.logger.info({}, 'AgentV installation credential verified; waiting for activation');
+      setTimeout(() => this.transport.forceReconnect(), 1_000).unref();
+      return;
+    }
     const compiled = new Set(toolRegistry.getAll().map((tool) => tool.name));
     const allowed = new Set<string>(policy.allowedTools.filter((name: string) => compiled.has(name)));
     if (this.config.allowedLogUnits.length === 0) allowed.delete('query_logs');
     if (!this.config.writeEnabled || !this.helperReady || !policy.writeEnabled) allowed.delete('restart_service');
     this.router.setSessionPolicy({ allowedTools: allowed, writeEnabled: Boolean(policy.writeEnabled && this.helperReady && this.config.writeEnabled), generation: this.generation, targetId: this.config.targetId });
     this.ready = true; this.transport.markReady(); this.snapshots.start(intervalMs, maxBytes); this.startHeartbeat();
+    this.sessionState.authenticated();
     this.logger.info({ workspaceId: result.workspaceId, allowedTools: [...allowed], writeEnabled: policy.writeEnabled && this.helperReady && this.config.writeEnabled }, 'Authenticated AgentV session ready');
   }
 
   private closed(): void { if (!this.running) return; this.generation++; this.clearSession(); }
   private clearSession(): void {
     this.ready = false; this.router.clearSessionPolicy(); this.snapshots?.stop();
+    this.sessionState.disconnected();
     if (this.handshakeDeadline) clearTimeout(this.handshakeDeadline); this.handshakeDeadline = null;
     if (this.heartbeat) clearInterval(this.heartbeat); this.heartbeat = null;
   }

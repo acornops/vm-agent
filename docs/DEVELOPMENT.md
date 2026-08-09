@@ -68,10 +68,11 @@ load the installed helper client from the extracted artifact.
 
 ## Live systemd gate
 
-The Ubuntu CI workflow runs `npm run smoke:systemd` on an ephemeral hosted VM.
-It exercises the packaged artifact with real systemd, journald, procfs, and
-sockets, then performs an exact-allowlisted helper restart, replay, upgrade,
-rollback, and uninstall-preservation check.
+Release CI runs the live systemd smoke on an ephemeral hosted Ubuntu VM and a
+disposable Rocky Linux 9 runner. It exercises the packaged bootstrap and
+artifact with real systemd, journald, procfs, and sockets, then performs
+transactional credential replacement and recovery, an exact-allowlisted helper
+restart, replay, upgrade, rollback, and uninstall-preservation checks.
 
 The command mutates systemd and is deliberately guarded. It refuses to run
 unless it is root on a live systemd host and both `CI=true` and

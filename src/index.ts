@@ -1,4 +1,5 @@
 import { SocketActionClient } from './actions/client.js';
+import { rmSync, writeFileSync } from 'node:fs';
 import { LinuxHostAdapter } from './adapters/linux.js';
 import { MockHostAdapter } from './adapters/mock.js';
 import { loadConfig } from './config.js';
@@ -25,7 +26,18 @@ if (process.argv[2] === 'doctor') {
   registerAllTools(host, actions);
   const executor = new ToolExecutor({ localWriteEnabled: () => config.writeEnabled, metrics });
   const router = new McpRouter(executor, logger);
-  const lifecycle = new LifecycleManager(config, host, actions, router, logger, metrics);
+  const authenticatedMarker = '/run/acornops-agentv/authenticated';
+  const sessionState = process.env.NOTIFY_SOCKET ? {
+    authenticated: () => {
+      try { writeFileSync(authenticatedMarker, `${new Date().toISOString()}\n`, { mode: 0o600 }); }
+      catch (error) { logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Could not record authenticated readiness'); }
+    },
+    disconnected: () => {
+      try { rmSync(authenticatedMarker, { force: true }); }
+      catch (error) { logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Could not clear authenticated readiness'); }
+    }
+  } : undefined;
+  const lifecycle = new LifecycleManager(config, host, actions, router, logger, metrics, sessionState);
   logger.info({ targetId: config.targetId, targetType: config.targetType, collectorMode: config.collectorMode, connectorVersion: config.connectorVersion, writeEnabled: config.writeEnabled }, 'AgentV starting');
   lifecycle.start();
   if (process.env.NOTIFY_SOCKET && !await notifyReady()) logger.error({}, 'systemd readiness notification failed');

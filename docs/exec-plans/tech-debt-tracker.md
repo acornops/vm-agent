@@ -4,5 +4,5 @@ Track durable gaps that should not be lost between agent sessions.
 
 | Gap | Impact | Owner | Target | Status |
 | --- | --- | --- | --- | --- |
-| Qualify RHEL-family live systemd behavior | Replay fixtures cover parser variance and hosted Ubuntu is the required mutation gate; RHEL still lacks equivalent live evidence | AgentV maintainers | Before broad RHEL rollout | Open |
+| Record immutable AgentV release and reboot-canary evidence | Release CI requires live Ubuntu and disposable Rocky Linux 9 systemd gates, but production promotion still needs green published-asset evidence plus a staging power-cycle during incomplete transaction recovery | AgentV maintainers | Before AgentV production rollout | Open |
 | Add metrics or health signal | Improves operations beyond structured logs | AgentV maintainers | Future runtime hardening | Open |

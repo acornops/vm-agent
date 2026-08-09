@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+transaction_root=/var/lib/acornops-agentv/install-transactions
+active_link="${transaction_root}/active"
+[[ "$(id -u)" -eq 0 ]] || { echo "AgentV recovery must run as root." >&2; exit 1; }
+command -v flock >/dev/null 2>&1 || { echo "AgentV recovery requires flock." >&2; exit 1; }
+exec 9>/run/lock/acornops-agentv-install.lock
+flock -n 9 || { echo "AgentV installation is active; recovery will retry." >&2; exit 75; }
+[[ -L "${active_link}" ]] || exit 0
+
+transaction_dir="$(readlink -f "${active_link}")"
+[[ "${transaction_dir}" == "${transaction_root}/"* && -d "${transaction_dir}" ]] || {
+  echo "AgentV recovery found an unsafe transaction path." >&2
+  exit 1
+}
+phase="$(<"${transaction_dir}/phase")"
+if [[ "${phase}" == committed ]]; then
+  rm -f -- "${active_link}"
+  rm -rf -- "${transaction_dir}"
+  exit 0
+fi
+
+retain_authenticated_candidate() {
+  printf '%s\n' committed > "${transaction_dir}/phase"
+  rm -f -- "${active_link}"
+  rm -rf -- "${transaction_dir}"
+  echo "Retained the authenticated AgentV installation after boot recovery."
+  exit 0
+}
+
+require_restored_connection() {
+  [[ -f "${transaction_dir}/previous-active" ]] || return 0
+  if [[ ! -f /run/acornops-agentv/authenticated ]] \
+    || { [[ -n "${1:-}" ]] \
+      && ! /usr/bin/node -e 'const p=require(process.argv[1]);process.exit(p.activeConnected===true?0:1)' "$1"; }; then
+    printf '%s\n' recovery_pending > "${transaction_dir}/phase"
+    echo "Restored the previous AgentV installation; waiting for its authenticated connection." >&2
+    exit 75
+  fi
+}
+
+restore_local() {
+  local_changed=false
+  if [[ -f "${transaction_dir}/candidate-current" ]]; then
+    candidate_release="$(<"${transaction_dir}/candidate-current")"
+  else
+    candidate_release="$(readlink -f /opt/acornops/agentv/current 2>/dev/null || true)"
+  fi
+  if [[ -f "${transaction_dir}/previous-current" ]]; then
+    previous_current="$(<"${transaction_dir}/previous-current")"
+    [[ "${previous_current}" == /opt/acornops/agentv/releases/* && -d "${previous_current}" ]] || {
+      echo "AgentV recovery previous release is invalid." >&2
+      return 1
+    }
+    if [[ "${candidate_release}" != "${previous_current}" ]]; then
+      temporary_link="/opt/acornops/agentv/.recovery-current-$$"
+      ln -s "${previous_current}" "${temporary_link}"
+      mv -Tf "${temporary_link}" /opt/acornops/agentv/current
+      local_changed=true
+    fi
+  else
+    if [[ -e /opt/acornops/agentv/current || -L /opt/acornops/agentv/current ]]; then
+      rm -f -- /opt/acornops/agentv/current
+      local_changed=true
+    fi
+  fi
+  if [[ -f "${transaction_dir}/previous.env" ]]; then
+    if [[ ! -f /etc/acornops/agentv.env ]] || ! diff -q "${transaction_dir}/previous.env" /etc/acornops/agentv.env >/dev/null; then
+      install -o root -g acornops-agent -m 0640 "${transaction_dir}/previous.env" /etc/acornops/.agentv.env.recovery
+      mv -f /etc/acornops/.agentv.env.recovery /etc/acornops/agentv.env
+      local_changed=true
+    fi
+  else
+    if [[ -e /etc/acornops/agentv.env ]]; then
+      rm -f -- /etc/acornops/agentv.env
+      local_changed=true
+    fi
+  fi
+  if [[ ! -f "${transaction_dir}/previous-installation" ]]; then
+    systemctl disable --now acornops-agentv.service acornops-agentv-actions.socket >/dev/null 2>&1 || true
+    # Do not stop this recovery unit from inside its own ExecStart process.
+    systemctl disable acornops-agentv-install-recovery.service >/dev/null 2>&1 || true
+    if [[ ! -f "${transaction_dir}/previous-systemd-assets" ]]; then
+      rm -f -- /etc/systemd/system/acornops-agentv.service \
+        /etc/systemd/system/acornops-agentv-actions.service \
+        /etc/systemd/system/acornops-agentv-actions.socket \
+        /etc/systemd/system/acornops-agentv-install-recovery.service \
+        /usr/local/bin/acornops-agentv-doctor \
+        /usr/local/sbin/acornops-agentv-install-recover
+    fi
+    [[ -f "${transaction_dir}/previous-action-policy" ]] || rm -f -- /etc/acornops/agentv-actions.json
+    if [[ ! -f "${transaction_dir}/previous-release-directory" ]]; then
+      [[ "${candidate_release}" == /opt/acornops/agentv/releases/* ]] && rm -rf -- "${candidate_release}"
+    fi
+  fi
+  systemctl daemon-reload
+  if [[ "${local_changed}" == true && -f "${transaction_dir}/previous-active" ]] \
+    && systemctl is-active --quiet acornops-agentv.service; then
+    rm -f -- /run/acornops-agentv/authenticated
+    systemctl restart --no-block acornops-agentv.service
+  fi
+}
+
+restore_candidate() {
+  [[ -f "${transaction_dir}/candidate-current" && -f "${transaction_dir}/candidate.env" ]] || {
+    echo "AgentV recovery candidate state is incomplete." >&2
+    return 1
+  }
+  candidate_current="$(<"${transaction_dir}/candidate-current")"
+  [[ "${candidate_current}" == /opt/acornops/agentv/releases/* && -d "${candidate_current}" ]] || {
+    echo "AgentV recovery candidate release is invalid." >&2
+    return 1
+  }
+  temporary_link="/opt/acornops/agentv/.recovery-candidate-$$"
+  ln -s "${candidate_current}" "${temporary_link}"
+  mv -Tf "${temporary_link}" /opt/acornops/agentv/current
+  install -o root -g acornops-agent -m 0640 "${transaction_dir}/candidate.env" /etc/acornops/.agentv.env.recovery
+  mv -f /etc/acornops/.agentv.env.recovery /etc/acornops/agentv.env
+  systemctl daemon-reload
+  systemctl disable --now acornops-agentv-actions.socket >/dev/null 2>&1 || true
+  systemctl enable acornops-agentv.service
+  rm -f -- /run/acornops-agentv/authenticated
+  # This helper runs in a unit ordered before AgentV. Queueing avoids waiting
+  # on a start job that cannot run until the recovery unit exits.
+  systemctl restart --no-block acornops-agentv.service
+}
+
+has_control_transaction=false
+if [[ -f "${transaction_dir}/transaction-id" && -f "${transaction_dir}/platform-url" && -f "${transaction_dir}/curl.conf" ]]; then
+  has_control_transaction=true
+fi
+
+if [[ "${has_control_transaction}" == true ]]; then
+  transaction_id="$(<"${transaction_dir}/transaction-id")"
+  platform_url="$(<"${transaction_dir}/platform-url")"
+  status_file="${transaction_dir}/recovery-status.json"
+  if ! curl --config "${transaction_dir}/curl.conf" -fsS --connect-timeout 10 --max-time 30 --max-filesize 65536 \
+    "${platform_url%/}/api/v1/agentv/installations/${transaction_id}/status" -o "${status_file}"; then
+    echo "AgentV recovery could not reach or authenticate with the control plane; preserving the candidate for retry." >&2
+    exit 75
+  fi
+  remote_status="$(/usr/bin/node -e 'const p=require(process.argv[1]);if(typeof p.status!=="string")process.exit(1);process.stdout.write(p.status)' "${status_file}")" || {
+    echo "AgentV recovery received an invalid transaction status; preserving the candidate for retry." >&2
+    exit 75
+  }
+  case "${remote_status}" in
+    completed)
+      if [[ -f "${transaction_dir}/previous-selected" ]]; then
+        rollback_status="$(curl --config "${transaction_dir}/curl.conf" -sS --connect-timeout 10 --max-time 30 \
+          --max-filesize 65536 -o "${transaction_dir}/rollback-response.json" -w '%{http_code}' -X POST \
+          "${platform_url%/}/api/v1/agentv/installations/${transaction_id}/rollback" || true)"
+        case "${rollback_status}" in
+          2??)
+            restore_local
+            if [[ -f "${transaction_dir}/previous-active" ]]; then
+              printf '%s\n' recovery_pending > "${transaction_dir}/phase"
+              echo "Restored the previous AgentV installation; waiting for its authenticated connection." >&2
+              exit 75
+            fi
+            rm -f -- "${active_link}"
+            rm -rf -- "${transaction_dir}"
+            echo "Recovered the previous AgentV installation after rolling back the committed credential."
+            exit 0
+            ;;
+          401|409)
+            # The mutation/grace window is closed. The candidate remains the
+            # only active credential, so restoring it is the sole connected
+            # outcome; retain the transaction until that connection is proven.
+            restore_candidate
+            rm -f -- "${transaction_dir}/previous-selected"
+            echo "AgentV rollback is no longer available; restored the committed candidate and will verify it on retry." >&2
+            exit 75
+            ;;
+          *)
+            echo "AgentV recovery could not roll back the committed credential; preserving local and remote state for retry." >&2
+            exit 75
+            ;;
+        esac
+      fi
+      if [[ ! -f /run/acornops-agentv/authenticated ]]; then
+        echo "Committed AgentV candidate has not authenticated locally yet; preserving recovery state for retry." >&2
+        exit 75
+      fi
+      if ! /usr/bin/node -e 'const p=require(process.argv[1]);process.exit(p.activeConnected===true?0:1)' "${status_file}"; then
+        echo "Committed AgentV candidate has not reconnected yet; preserving recovery state for retry." >&2
+        exit 75
+      fi
+      retain_authenticated_candidate
+      ;;
+    cancelled|expired)
+      restore_local
+      require_restored_connection "${status_file}"
+      rm -f -- "${status_file}"
+      ;;
+    exchanged|verified)
+      rollback_status="$(curl --config "${transaction_dir}/curl.conf" -fsS --connect-timeout 10 --max-time 30 \
+        --max-filesize 65536 -o /dev/null -w '%{http_code}' -X POST \
+        "${platform_url%/}/api/v1/agentv/installations/${transaction_id}/rollback")" || rollback_status=""
+      if [[ "${rollback_status}" != 2?? ]]; then
+        echo "AgentV recovery could not cancel the pending credential; preserving the candidate for retry." >&2
+        exit 75
+      fi
+      restore_local
+      if [[ -f "${transaction_dir}/previous-active" ]]; then
+        printf '%s\n' recovery_pending > "${transaction_dir}/phase"
+        echo "Restored the previous AgentV installation; waiting for its authenticated connection." >&2
+        exit 75
+      fi
+      rm -f -- "${status_file}"
+      ;;
+    *)
+      echo "AgentV recovery found an unknown transaction state; preserving the candidate for retry." >&2
+      exit 75
+      ;;
+  esac
+fi
+
+if [[ "${has_control_transaction}" != true ]]; then
+  restore_local
+  require_restored_connection
+fi
+printf '%s\n' rolled_back > "${transaction_dir}/phase"
+rm -f -- "${active_link}"
+rm -rf -- "${transaction_dir}"
+echo "Recovered the previous AgentV installation after an incomplete transaction."
