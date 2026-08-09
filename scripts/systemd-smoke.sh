@@ -62,6 +62,15 @@ wait_for_authentication() {
   return 1
 }
 
+wait_for_service_active() {
+  for _ in $(seq 1 100); do
+    systemctl is-active --quiet acornops-agentv.service && return 0
+    sleep 0.1
+  done
+  systemctl status acornops-agentv.service --no-pager
+  return 1
+}
+
 for _ in $(seq 1 100); do
   curl -fsS "http://127.0.0.1:18082/releases/download/v${version}/install-agentv.sh" >/dev/null 2>&1 && break
   sleep 0.1
@@ -241,7 +250,7 @@ ln -sfn "${closed_grace_initial_recovery}" "${recovery_root}/active"
 if acornops-agentv-install-recover; then echo 'Initial closed-grace recovery unexpectedly completed before candidate authentication.' >&2; exit 1; fi
 [[ -L "${recovery_root}/active" && ! -e "${closed_grace_initial_recovery}/previous-selected" ]]
 systemctl is-enabled --quiet acornops-agentv.service
-systemctl is-active --quiet acornops-agentv.service
+wait_for_service_active
 wait_for_authentication
 acornops-agentv-install-recover
 [[ ! -e "${closed_grace_initial_recovery}" && ! -e "${recovery_root}/active" ]]
