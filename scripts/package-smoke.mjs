@@ -69,6 +69,10 @@ try {
   const systemdInstaller = await readFile(path.join(extracted, 'packaging/systemd/install.sh'), 'utf8');
   const installWorker = await readFile(path.join(extracted, 'packaging/systemd/install-worker.sh'), 'utf8');
   const installRecovery = await readFile(path.join(extracted, 'packaging/systemd/acornops-agentv-install-recover'), 'utf8');
+  const agentService = await readFile(path.join(extracted, 'packaging/systemd/acornops-agentv.service'), 'utf8');
+  if (!agentService.includes('RuntimeDirectoryPreserve=restart')) {
+    throw new Error('AgentV service restarts must preserve the privileged action socket directory');
+  }
   if (!systemdInstaller.includes('diff -qr --no-dereference')) throw new Error('Systemd installer must verify an existing immutable release before reuse');
   if (!systemdInstaller.includes('[[ -L "${release_root}"')) throw new Error('Systemd installer must reject a symlinked immutable release directory');
   if (!installWorker.includes('mv -f /etc/acornops/.agentv.env.install /etc/acornops/agentv.env')) throw new Error('Bootstrap worker must install AgentV configuration with an atomic rename');

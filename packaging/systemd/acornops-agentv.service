@@ -11,6 +11,7 @@ User=acornops-agent
 Group=acornops-agent
 RuntimeDirectory=acornops-agentv
 RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
 EnvironmentFile=/etc/acornops/agentv.env
 WorkingDirectory=/opt/acornops/agentv/current
 ExecStart=/usr/bin/node /opt/acornops/agentv/current/dist/index.js
