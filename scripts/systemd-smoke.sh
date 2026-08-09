@@ -170,7 +170,7 @@ uncommitted_recovery="${recovery_root}/smoke-uncommitted-$$"
 mkdir -m 0700 "${uncommitted_recovery}"
 readlink -f /opt/acornops/agentv/current > "${uncommitted_recovery}/previous-current"
 cp -p /etc/acornops/agentv.env "${uncommitted_recovery}/previous.env"
-touch "${uncommitted_recovery}/previous-active"
+touch "${uncommitted_recovery}/previous-installation" "${uncommitted_recovery}/previous-active"
 printf '%s' '33333333-3333-4333-8333-333333333333' > "${uncommitted_recovery}/transaction-id"
 printf '%s' 'http://127.0.0.1:18081' > "${uncommitted_recovery}/platform-url"
 printf '%s\n' 'header = "x-agentv-transaction-secret: avt_33333333-3333-4333-8333-333333333333_33333333333343338333333333333333"' > "${uncommitted_recovery}/curl.conf"
@@ -178,6 +178,7 @@ printf '%s\n' cutover > "${uncommitted_recovery}/phase"
 ln -sfn "${uncommitted_recovery}" "${recovery_root}/active"
 if acornops-agentv-install-recover; then echo 'Uncommitted recovery unexpectedly completed before a fresh status check.' >&2; exit 1; fi
 [[ -L "${recovery_root}/active" && "$(<"${uncommitted_recovery}/phase")" == recovery_pending ]]
+[[ -x /usr/local/sbin/acornops-agentv-install-recover ]]
 acornops-agentv-install-recover
 [[ ! -e "${uncommitted_recovery}" && ! -e "${recovery_root}/active" ]]
 # Recovery is idempotent after confirmed rollback state has been removed.
@@ -207,7 +208,9 @@ cp -p /etc/acornops/agentv.env "${closed_grace_recovery}/candidate.env"
 sed 's/rotatedsystemdsmokekey0000000000/systemdsmokekey00000000000000000/' \
   /etc/acornops/agentv.env > "${closed_grace_recovery}/previous.env"
 install -o root -g acornops-agent -m 0640 "${closed_grace_recovery}/previous.env" /etc/acornops/agentv.env
-touch "${closed_grace_recovery}/previous-active" "${closed_grace_recovery}/previous-selected"
+touch "${closed_grace_recovery}/previous-installation" \
+  "${closed_grace_recovery}/previous-active" \
+  "${closed_grace_recovery}/previous-selected"
 printf '%s' '55555555-5555-4555-8555-555555555555' > "${closed_grace_recovery}/transaction-id"
 printf '%s' 'http://127.0.0.1:18081' > "${closed_grace_recovery}/platform-url"
 printf '%s\n' 'header = "x-agentv-transaction-secret: avt_55555555-5555-4555-8555-555555555555_55555555555545558555555555555555"' > "${closed_grace_recovery}/curl.conf"
@@ -272,7 +275,7 @@ recovery_transaction="/var/lib/acornops-agentv/install-transactions/smoke-recove
 mkdir -m 0700 "${recovery_transaction}"
 printf '%s\n' "/opt/acornops/agentv/releases/${version}" > "${recovery_transaction}/previous-current"
 cp -p /etc/acornops/agentv.env "${recovery_transaction}/previous.env"
-touch "${recovery_transaction}/previous-active"
+touch "${recovery_transaction}/previous-installation" "${recovery_transaction}/previous-active"
 printf '%s\n' cutover > "${recovery_transaction}/phase"
 ln -sfn "${recovery_transaction}" /var/lib/acornops-agentv/install-transactions/active
 if acornops-agentv-install-recover; then echo 'Repair recovery unexpectedly completed before restored authentication.' >&2; exit 1; fi
