@@ -55,7 +55,7 @@ server_pid="$!"
 
 wait_for_authentication() {
   for _ in $(seq 1 100); do
-    [[ -f "${marker}" ]] && return 0
+    [[ -f "${marker}" && -f /run/acornops-agentv/authenticated ]] && return 0
     sleep 0.1
   done
   journalctl -u acornops-agentv.service --no-pager -n 100
