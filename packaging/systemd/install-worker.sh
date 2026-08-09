@@ -424,7 +424,13 @@ printf '%s\n' cutover > "${transaction_dir}/phase"
 
 systemctl stop acornops-agentv-actions.service >/dev/null 2>&1 || true
 if [[ "${access_mode}" == read_write ]]; then
-  systemctl enable --now acornops-agentv-actions.socket
+  # install.sh refreshes the socket unit before this point. On a repair of an
+  # already-enabled installation, `enable --now` alone can leave systemd's
+  # active unit without a listening endpoint for the refreshed definition.
+  # The helper is stopped above, so restarting the socket is safe and ensures
+  # the root-owned host boundary is actually available after every cutover.
+  systemctl enable acornops-agentv-actions.socket
+  systemctl restart acornops-agentv-actions.socket
   touch "${transaction_dir}/candidate-actions-enabled" "${transaction_dir}/candidate-actions-active"
 else
   systemctl disable --now acornops-agentv-actions.socket >/dev/null 2>&1 || true
