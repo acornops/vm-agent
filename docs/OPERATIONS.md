@@ -88,11 +88,12 @@ If an installer reports that an incomplete transaction exists, run
 unit's journal. Do not delete the root-owned transaction directory while
 recovery is pending.
 
-The tag release workflow runs a Rocky Linux 9 systemd job on a disposable
-self-hosted runner before publishing. It executes the same bootstrap,
+The tag release workflow runs the complete systemd gate on a fresh
+GitHub-hosted Ubuntu 24.04 VM before publishing. It exercises bootstrap,
 authentication, same-version rerun, credential replacement, upgrade, rollback,
-and uninstall-preservation checks as the Ubuntu job. Both jobs are release gates
-for `0.0.1-experimental.6`.
+boot recovery, and uninstall preservation. Ubuntu 24.04 LTS is the only
+qualified first-release host; other distributions require equivalent live
+evidence before they can be documented as supported.
 
 The installer adds `acornops-agent` to `systemd-journal` when that group exists.
 Run `sudo acornops-agentv-doctor` to verify configuration, binaries, journal
@@ -102,11 +103,17 @@ drops privileges before checking host access, so its result reflects the actual
 
 ## Optional service restart
 
-Writes are disabled by default. To enable one service, set
-`ACORNOPS_AGENT_WRITE_ENABLED=true`, add its exact `.service` name to root-owned
-`/etc/acornops/agentv-actions.json`, and enable
-`acornops-agentv-actions.socket`. Globs, aliases, AgentV's own units, arbitrary
-commands, sudo, and unrestricted `systemctl` are rejected.
+Writes are disabled by default. For production onboarding, select read-write
+access in the management console and add each exact restartable `.service`
+unit before generating the command. The enrollment-bound policy is returned
+only to the root installer, which atomically writes
+`/etc/acornops/agentv-actions.json`, sets
+`ACORNOPS_AGENT_WRITE_ENABLED=true`, and enables
+`acornops-agentv-actions.socket`. Repair preserves and validates the local
+policy; token-backed replacement re-applies the enrollment snapshot. Both
+restore the prior policy on failure. Globs, aliases, AgentV's own units,
+arbitrary commands, sudo, and unrestricted `systemctl` are rejected. Editing
+these files manually is not a supported way to change the control-plane policy.
 
 For the Docker-only mock fixture, set both `ACORNOPS_AGENT_WRITE_ENABLED=true`
 and `ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED=true` to simulate a restart of its

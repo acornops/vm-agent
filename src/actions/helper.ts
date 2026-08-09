@@ -7,7 +7,9 @@ import { SERVICE_UNIT } from '../tools/index.js';
 import { ActionLedger, requestHash } from './ledger.js';
 import type { RestartReceipt, RestartRequest } from './types.js';
 
-const PROTECTED = new Set(['acornops-agentv.service', 'acornops-agentv-actions.service']);
+function isProtectedAgentVUnit(unit: string): boolean {
+  return unit === 'acornops-agentv.service' || unit.startsWith('acornops-agentv-');
+}
 interface Policy { schemaVersion: 1; restartServices: string[]; }
 interface ActionHelperDependencies {
   ledger: Pick<ActionLedger, 'initialize' | 'get' | 'put' | 'prune'>;
@@ -21,8 +23,8 @@ export function validatePolicy(raw: unknown): Policy {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Action policy is invalid');
   const value = raw as Record<string, unknown>;
   if (Object.keys(value).some((key) => key !== 'schemaVersion' && key !== 'restartServices')
-    || value.schemaVersion !== 1 || !Array.isArray(value.restartServices) || value.restartServices.length > 256
-    || !value.restartServices.every((unit) => typeof unit === 'string' && SERVICE_UNIT.test(unit) && !unit.includes('*') && !PROTECTED.has(unit))
+    || value.schemaVersion !== 1 || !Array.isArray(value.restartServices) || value.restartServices.length > 32
+    || !value.restartServices.every((unit) => typeof unit === 'string' && SERVICE_UNIT.test(unit) && !unit.includes('*') && !isProtectedAgentVUnit(unit))
     || new Set(value.restartServices).size !== value.restartServices.length) throw new Error('Action policy is invalid');
   return value as unknown as Policy;
 }
@@ -33,7 +35,7 @@ export function validateRestartRequest(request: Record<string, unknown>): Restar
   if (Object.keys(request).some((key) => !allowedFields.has(key))
     || request.protocol_version !== 1 || request.action !== 'restart_service'
     || typeof request.operation_id !== 'string' || !/^[a-f0-9]{24}$/.test(request.operation_id)
-    || typeof request.unit !== 'string' || !SERVICE_UNIT.test(request.unit) || PROTECTED.has(request.unit)
+    || typeof request.unit !== 'string' || !SERVICE_UNIT.test(request.unit) || isProtectedAgentVUnit(request.unit)
     || typeof request.reason !== 'string' || request.reason.trim().length < 1 || request.reason.length > 512
     || typeof request.expected_active_state !== 'string' || request.expected_active_state.length < 1 || request.expected_active_state.length > 64
     || typeof request.expected_sub_state !== 'string' || request.expected_sub_state.length < 1 || request.expected_sub_state.length > 64

@@ -126,7 +126,8 @@ jobs:
           fail_ci_if_error: false
 
   systemd-smoke:
-    runs-on: ubuntu-latest
+    name: Ubuntu 24.04 live systemd gate
+    runs-on: ubuntu-24.04
     needs: [changes, validate]
     if: needs.changes.outputs.run_full == 'true'
     steps:

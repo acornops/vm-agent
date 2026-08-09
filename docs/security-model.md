@@ -6,6 +6,13 @@ The unprivileged AgentV runs on a host with access to local system telemetry and
 
 Read tools never execute arbitrary shell input. `restart_service` is the only write: it is disabled by default, rejects AgentV's own units, requires an exact allowlist plus preconditions, and cannot perform arbitrary commands, package changes, process kills, or filesystem mutation.
 
+Read-write onboarding snapshots the exact unit allowlist in the one-use
+enrollment. Only the root installer receives that policy and enables the
+privileged socket. Repair and ordinary credential replacement preserve it;
+an explicit host-policy update installs its new token-bound snapshot. Every
+path is transactional, so editing the copied command cannot widen host access
+and a failed cutover restores the prior policy and socket state.
+
 ## Secrets
 
 One-use enrollment tokens are accepted only by the bootstrap and exchanged for

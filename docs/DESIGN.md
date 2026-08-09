@@ -12,7 +12,7 @@ target-bound credential stored in the protected environment file. Repair and
 upgrade reuse that credential; replacement is a provisional, rollback-safe
 transaction.
 
-The control plane requests diagnostics through JSON-RPC. The AgentV returns bounded host data and does not expose a general shell, package manager, process control, or service restart interface.
+The control plane requests diagnostics through JSON-RPC. AgentV returns bounded host data and does not expose a general shell, package manager, or process-control interface. An optional `restart_service` tool can restart only exact units selected during read-write onboarding, through a separate root-owned helper and the target's run policy.
 
 ## Runtime Design Rules
 
@@ -26,7 +26,7 @@ The control plane requests diagnostics through JSON-RPC. The AgentV returns boun
 
 - Arbitrary remote shell execution.
 - Package installation or OS patching.
-- Process kills, service restarts, or filesystem mutation.
+- Process kills, arbitrary service control, or filesystem mutation. The only supported host mutation is an exact-allowlisted `restart_service` request.
 - Local durable queueing of snapshots or tool requests.
 - Windows or non-systemd support in v1.
 

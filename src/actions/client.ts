@@ -13,7 +13,7 @@ const HELPER_ERROR_CODES = new Set<ToolErrorCode>([
 const helperCapabilitiesSchema = z.object({
   protocol_version: z.literal(1),
   policy_valid: z.boolean(),
-  restart_services: z.array(z.string().min(9).max(263).regex(SERVICE_UNIT)).max(256),
+  restart_services: z.array(z.string().min(9).max(263).regex(SERVICE_UNIT)).max(32),
 }).strict();
 const restartStateSchema = z.object({
   active_state: z.string().min(1).max(64),

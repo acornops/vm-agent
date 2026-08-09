@@ -115,7 +115,7 @@ npm run dev
 ```
 
 Use `ACORNOPS_VM_COLLECTOR_MODE=mock` for local Docker and CI. Use `live` on a Linux host with systemd and journald available.
-Set both `ACORNOPS_AGENT_WRITE_ENABLED=true` and `ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED=true` to try the approval-gated `restart_service` flow against the mock fixture's `ssh.service`. This is a simulation, not a host restart; it preserves the fixture's active/running preconditions and returns a synthetic restart receipt.
+Set both `ACORNOPS_AGENT_WRITE_ENABLED=true` and `ACORNOPS_AGENT_MOCK_ACTIONS_ENABLED=true` to try the run-policy-gated `restart_service` flow against the mock fixture's `ssh.service`. The default target policy requires approval; an explicit auto-run policy can allow this reviewed non-destructive action. This is a simulation, not a host restart; it preserves the fixture's active/running preconditions and returns a synthetic restart receipt.
 
 ## Systemd Install Assets
 
@@ -136,6 +136,14 @@ bootstrap is safe to rerun for the same version, upgrades, and explicit
 credential replacement. Initial and replacement commands exchange a 15-minute
 one-use enrollment token; repair and upgrade reuse the protected local
 credential.
+
+The onboarding policy is read-only by default. When an operator selects
+read-write access, the enrollment carries only exact restartable systemd unit
+names. The root bootstrap installs that snapshot in
+`/etc/acornops/agentv-actions.json` and enables the privileged socket; the
+copied command remains the same one-command flow. Every allowed restart
+remains subject to the control-plane run permission policy; auto-run applies
+only when an operator deliberately selects it there.
 
 Runtime configuration belongs in `/etc/acornops/agentv.env`. Keep that file owned by `root:acornops-agent` with mode `0640` because it contains the agent key.
 
@@ -175,7 +183,7 @@ npm run build
 npm run smoke:package
 ```
 
-The hosted Ubuntu workflow additionally runs the guarded `smoke:systemd` gate
+The hosted Ubuntu 24.04 workflow additionally runs the guarded `smoke:systemd` gate
 against real systemd, journald, procfs, socket inspection, and the privileged
 helper. It covers install, doctor, allowlisted restart, idempotent replay,
 upgrade, rollback, and uninstall preservation. The script intentionally refuses

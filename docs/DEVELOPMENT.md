@@ -68,11 +68,15 @@ load the installed helper client from the extracted artifact.
 
 ## Live systemd gate
 
-Release CI runs the live systemd smoke on an ephemeral hosted Ubuntu VM and a
-disposable Rocky Linux 9 runner. It exercises the packaged bootstrap and
-artifact with real systemd, journald, procfs, and sockets, then performs
+Release CI runs the live systemd smoke on a fresh GitHub-hosted Ubuntu 24.04
+VM. It exercises the packaged bootstrap and artifact with real systemd,
+journald, procfs, and sockets, then performs
 transactional credential replacement and recovery, an exact-allowlisted helper
 restart, replay, upgrade, rollback, and uninstall-preservation checks.
+
+Ubuntu 24.04 LTS is the only qualified first-release host. Qualify another
+distribution with the same live bootstrap and recovery gate before documenting
+it as supported.
 
 The command mutates systemd and is deliberately guarded. It refuses to run
 unless it is root on a live systemd host and both `CI=true` and

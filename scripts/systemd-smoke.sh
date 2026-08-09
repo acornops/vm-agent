@@ -28,9 +28,9 @@ closed_grace_recovery=""
 closed_grace_initial_recovery=""
 
 cleanup() {
-  systemctl disable --now acornops-agentv-smoke-worker.service >/dev/null 2>&1 || true
+  systemctl disable --now acornops-smoke-worker.service >/dev/null 2>&1 || true
   systemctl stop acornops-agentv.service acornops-agentv-actions.service acornops-agentv-actions.socket >/dev/null 2>&1 || true
-  rm -f /etc/systemd/system/acornops-agentv-smoke-worker.service
+  rm -f /etc/systemd/system/acornops-smoke-worker.service
   systemctl daemon-reload >/dev/null 2>&1 || true
   if [[ -n "${server_pid}" ]]; then kill "${server_pid}" >/dev/null 2>&1 || true; fi
   if [[ -n "${action_smoke}" ]]; then rm -f -- "${action_smoke}"; fi
@@ -71,10 +71,58 @@ wait_for_service_active() {
   return 1
 }
 
+assert_action_socket_disabled() {
+  if systemctl is-enabled --quiet acornops-agentv-actions.socket 2>/dev/null \
+    || systemctl is-active --quiet acornops-agentv-actions.socket; then
+    echo "AgentV action socket unexpectedly remained enabled or active." >&2
+    return 1
+  fi
+}
+
+snapshot_action_state() {
+  local transaction_directory="$1"
+  local state_name="$2"
+  cp -p /etc/acornops/agentv-actions.json "${transaction_directory}/${state_name}-actions.json"
+  chmod 0600 "${transaction_directory}/${state_name}-actions.json"
+  if systemctl is-enabled --quiet acornops-agentv-actions.socket 2>/dev/null; then
+    touch "${transaction_directory}/${state_name}-actions-enabled"
+  fi
+  if systemctl is-active --quiet acornops-agentv-actions.socket; then
+    touch "${transaction_directory}/${state_name}-actions-active"
+  fi
+}
+
 for _ in $(seq 1 100); do
   curl -fsS "http://127.0.0.1:18082/releases/download/v${version}/install-agentv.sh" >/dev/null 2>&1 && break
   sleep 0.1
 done
+unit_file="${work}/acornops-smoke-worker.service"
+printf '%s\n' \
+  '[Unit]' \
+  'Description=Disposable AgentV restart smoke worker' \
+  '[Service]' \
+  'Type=simple' \
+  'ExecStart=/usr/bin/sleep infinity' > "${unit_file}"
+install -o root -g root -m 0644 "${unit_file}" /etc/systemd/system/acornops-smoke-worker.service
+systemctl daemon-reload
+systemctl enable --now acornops-smoke-worker.service
+# Enrollment policy is part of the authenticated bootstrap response, but the
+# installer must still reject a contradictory snapshot without exposing its
+# token or candidate credential and without changing the host.
+invalid_policy_token='aev_90909090-9090-4090-8090-909090909090_qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq'
+if invalid_policy_output="$(CI=true AGENTV_BOOTSTRAP_ALLOW_INSECURE_TEST=true bash "${repo_root}/release/install-agentv.sh" \
+  --release-base-url http://127.0.0.1:18082/releases/download \
+  --platform-url http://127.0.0.1:18081 \
+  --target-id agentv-systemd-smoke \
+  --enrollment-token "${invalid_policy_token}" 2>&1)"; then
+  echo "Invalid AgentV enrollment policy unexpectedly succeeded." >&2
+  exit 1
+fi
+[[ "${invalid_policy_output}" == *'AgentV enrollment response was invalid'* ]]
+[[ "${invalid_policy_output}" != *"${invalid_policy_token}"* ]]
+[[ "${invalid_policy_output}" != *'invalidpolicykey'* ]]
+[[ ! -e /var/lib/acornops-agentv/install-transactions/active ]]
+[[ ! -e /opt/acornops/agentv/current && ! -e /etc/acornops/agentv.env ]]
 # An initial-install failure after provisional authentication must return the host
 # to an uninstalled state before the real canary enrollment runs.
 if CI=true AGENTV_BOOTSTRAP_ALLOW_INSECURE_TEST=true bash "${repo_root}/release/install-agentv.sh" \
@@ -90,6 +138,8 @@ fi
 [[ ! -e /etc/systemd/system/acornops-agentv.service ]]
 [[ ! -e /etc/systemd/system/acornops-agentv-install-recovery.service ]]
 [[ ! -e "/opt/acornops/agentv/releases/${version}" ]]
+[[ ! -e /etc/acornops/agentv-actions.json ]]
+assert_action_socket_disabled
 
 CI=true AGENTV_BOOTSTRAP_ALLOW_INSECURE_TEST=true bash "${repo_root}/release/install-agentv.sh" \
   --release-base-url http://127.0.0.1:18082/releases/download \
@@ -103,28 +153,17 @@ CI=true AGENTV_BOOTSTRAP_ALLOW_INSECURE_TEST=true bash "${repo_root}/release/ins
   --target-id agentv-systemd-smoke
 systemctl is-active --quiet acornops-agentv.service
 [[ "$(systemctl show acornops-agentv.service --property=MainPID --value)" != "${same_command_pid}" ]]
-
-policy_file="${work}/agentv-actions.json"
-printf '%s\n' '{"schemaVersion":1,"restartServices":["acornops-agentv-smoke-worker.service"]}' > "${policy_file}"
-install -o root -g root -m 0600 "${policy_file}" /etc/acornops/agentv-actions.json
-
-unit_file="${work}/acornops-agentv-smoke-worker.service"
-printf '%s\n' \
-  '[Unit]' \
-  'Description=Disposable AgentV restart smoke worker' \
-  '[Service]' \
-  'Type=simple' \
-  'ExecStart=/usr/bin/sleep infinity' > "${unit_file}"
-install -o root -g root -m 0644 "${unit_file}" /etc/systemd/system/acornops-agentv-smoke-worker.service
+grep -q '^ACORNOPS_AGENT_WRITE_ENABLED=true$' /etc/acornops/agentv.env
+grep -q '"restartServices":\["acornops-smoke-worker.service"\]' /etc/acornops/agentv-actions.json
 
 systemd-analyze verify \
   /etc/systemd/system/acornops-agentv.service \
   /etc/systemd/system/acornops-agentv-actions.socket \
   /etc/systemd/system/acornops-agentv-actions.service \
   /etc/systemd/system/acornops-agentv-install-recovery.service \
-  /etc/systemd/system/acornops-agentv-smoke-worker.service
-systemctl daemon-reload
-systemctl enable --now acornops-agentv-smoke-worker.service acornops-agentv-actions.socket
+  /etc/systemd/system/acornops-smoke-worker.service
+systemctl is-enabled --quiet acornops-agentv-actions.socket
+systemctl is-active --quiet acornops-agentv-actions.socket
 
 wait_for_authentication
 systemctl is-active --quiet acornops-agentv.service
@@ -153,13 +192,14 @@ CI=true AGENTV_BOOTSTRAP_ALLOW_INSECURE_TEST=true bash "${repo_root}/release/ins
   --enrollment-token aev_22222222-2222-4222-8222-222222222222_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
   --replace-credential
 grep -q "^ACORNOPS_AGENT_KEY='ak_agentv-systemd-smoke_rotatedsystemdsmokekey0000000000'$" /etc/acornops/agentv.env
+grep -q '^ACORNOPS_AGENT_WRITE_ENABLED=false$' /etc/acornops/agentv.env
+grep -q '"restartServices":\[\]' /etc/acornops/agentv-actions.json
 systemctl is-active --quiet acornops-agentv.service
 wait_for_authentication
 grep -q '"agentKey":"ak_agentv-systemd-smoke_rotatedsystemdsmokekey0000000000"' "${marker}"
 rotated_pid="$(systemctl show acornops-agentv.service --property=MainPID --value)"
 [[ "${rotated_pid}" != "${original_pid}" ]]
-! systemctl is-enabled --quiet acornops-agentv-actions.socket
-! systemctl is-active --quiet acornops-agentv-actions.socket
+assert_action_socket_disabled
 
 recovery_root=/var/lib/acornops-agentv/install-transactions
 committed_recovery="${recovery_root}/smoke-committed-$$"
@@ -179,6 +219,7 @@ uncommitted_recovery="${recovery_root}/smoke-uncommitted-$$"
 mkdir -m 0700 "${uncommitted_recovery}"
 readlink -f /opt/acornops/agentv/current > "${uncommitted_recovery}/previous-current"
 cp -p /etc/acornops/agentv.env "${uncommitted_recovery}/previous.env"
+snapshot_action_state "${uncommitted_recovery}" previous
 touch "${uncommitted_recovery}/previous-installation" "${uncommitted_recovery}/previous-active"
 printf '%s' '33333333-3333-4333-8333-333333333333' > "${uncommitted_recovery}/transaction-id"
 printf '%s' 'http://127.0.0.1:18081' > "${uncommitted_recovery}/platform-url"
@@ -214,6 +255,8 @@ mkdir -m 0700 "${closed_grace_recovery}"
 readlink -f /opt/acornops/agentv/current > "${closed_grace_recovery}/previous-current"
 readlink -f /opt/acornops/agentv/current > "${closed_grace_recovery}/candidate-current"
 cp -p /etc/acornops/agentv.env "${closed_grace_recovery}/candidate.env"
+snapshot_action_state "${closed_grace_recovery}" candidate
+snapshot_action_state "${closed_grace_recovery}" previous
 sed 's/rotatedsystemdsmokekey0000000000/systemdsmokekey00000000000000000/' \
   /etc/acornops/agentv.env > "${closed_grace_recovery}/previous.env"
 install -o root -g acornops-agent -m 0640 "${closed_grace_recovery}/previous.env" /etc/acornops/agentv.env
@@ -239,6 +282,7 @@ closed_grace_initial_recovery="${recovery_root}/smoke-closed-grace-initial-$$"
 mkdir -m 0700 "${closed_grace_initial_recovery}"
 readlink -f /opt/acornops/agentv/current > "${closed_grace_initial_recovery}/candidate-current"
 cp -p /etc/acornops/agentv.env "${closed_grace_initial_recovery}/candidate.env"
+snapshot_action_state "${closed_grace_initial_recovery}" candidate
 touch "${closed_grace_initial_recovery}/previous-selected"
 printf '%s' '55555555-5555-4555-8555-555555555555' > "${closed_grace_initial_recovery}/transaction-id"
 printf '%s' 'http://127.0.0.1:18081' > "${closed_grace_initial_recovery}/platform-url"
@@ -284,6 +328,7 @@ recovery_transaction="/var/lib/acornops-agentv/install-transactions/smoke-recove
 mkdir -m 0700 "${recovery_transaction}"
 printf '%s\n' "/opt/acornops/agentv/releases/${version}" > "${recovery_transaction}/previous-current"
 cp -p /etc/acornops/agentv.env "${recovery_transaction}/previous.env"
+snapshot_action_state "${recovery_transaction}" previous
 touch "${recovery_transaction}/previous-installation" "${recovery_transaction}/previous-active"
 printf '%s\n' cutover > "${recovery_transaction}/phase"
 ln -sfn "${recovery_transaction}" /var/lib/acornops-agentv/install-transactions/active

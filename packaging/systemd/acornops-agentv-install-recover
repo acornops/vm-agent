@@ -40,6 +40,24 @@ require_restored_connection() {
   fi
 }
 
+restore_previous_actions() {
+  systemctl disable --now acornops-agentv-actions.socket >/dev/null 2>&1 || true
+  systemctl stop acornops-agentv-actions.service >/dev/null 2>&1 || true
+  if [[ -f "${transaction_dir}/previous-actions.json" ]]; then
+    install -o root -g root -m 0600 "${transaction_dir}/previous-actions.json" /etc/acornops/.agentv-actions.json.recovery
+    mv -f /etc/acornops/.agentv-actions.json.recovery /etc/acornops/agentv-actions.json
+  else
+    rm -f -- /etc/acornops/agentv-actions.json
+  fi
+  systemctl daemon-reload
+  if [[ -f "${transaction_dir}/previous-actions-enabled" ]]; then
+    systemctl enable acornops-agentv-actions.socket
+  fi
+  if [[ -f "${transaction_dir}/previous-actions-active" ]]; then
+    systemctl start acornops-agentv-actions.socket
+  fi
+}
+
 restore_local() {
   local_changed=false
   if [[ -f "${transaction_dir}/candidate-current" ]]; then
@@ -77,18 +95,17 @@ restore_local() {
       local_changed=true
     fi
   fi
+  restore_previous_actions
   if [[ ! -f "${transaction_dir}/previous-installation" ]]; then
     systemctl disable --now acornops-agentv.service acornops-agentv-actions.socket >/dev/null 2>&1 || true
     # Do not stop this recovery unit from inside its own ExecStart process.
     systemctl disable acornops-agentv-install-recovery.service >/dev/null 2>&1 || true
-    if [[ ! -f "${transaction_dir}/previous-systemd-assets" ]]; then
-      rm -f -- /etc/systemd/system/acornops-agentv.service \
-        /etc/systemd/system/acornops-agentv-actions.service \
-        /etc/systemd/system/acornops-agentv-actions.socket \
-        /etc/systemd/system/acornops-agentv-install-recovery.service \
-        /usr/local/bin/acornops-agentv-doctor \
-        /usr/local/sbin/acornops-agentv-install-recover
-    fi
+    rm -f -- /etc/systemd/system/acornops-agentv.service \
+      /etc/systemd/system/acornops-agentv-actions.service \
+      /etc/systemd/system/acornops-agentv-actions.socket \
+      /etc/systemd/system/acornops-agentv-install-recovery.service \
+      /usr/local/bin/acornops-agentv-doctor \
+      /usr/local/sbin/acornops-agentv-install-recover
     [[ -f "${transaction_dir}/previous-action-policy" ]] || rm -f -- /etc/acornops/agentv-actions.json
     if [[ ! -f "${transaction_dir}/previous-release-directory" ]]; then
       [[ "${candidate_release}" == /opt/acornops/agentv/releases/* ]] && rm -rf -- "${candidate_release}"
@@ -103,7 +120,8 @@ restore_local() {
 }
 
 restore_candidate() {
-  [[ -f "${transaction_dir}/candidate-current" && -f "${transaction_dir}/candidate.env" ]] || {
+  [[ -f "${transaction_dir}/candidate-current" && -f "${transaction_dir}/candidate.env" \
+    && -f "${transaction_dir}/candidate-actions.json" ]] || {
     echo "AgentV recovery candidate state is incomplete." >&2
     return 1
   }
@@ -117,8 +135,16 @@ restore_candidate() {
   mv -Tf "${temporary_link}" /opt/acornops/agentv/current
   install -o root -g acornops-agent -m 0640 "${transaction_dir}/candidate.env" /etc/acornops/.agentv.env.recovery
   mv -f /etc/acornops/.agentv.env.recovery /etc/acornops/agentv.env
+  install -o root -g root -m 0600 "${transaction_dir}/candidate-actions.json" /etc/acornops/.agentv-actions.json.recovery
+  mv -f /etc/acornops/.agentv-actions.json.recovery /etc/acornops/agentv-actions.json
   systemctl daemon-reload
   systemctl disable --now acornops-agentv-actions.socket >/dev/null 2>&1 || true
+  if [[ -f "${transaction_dir}/candidate-actions-enabled" ]]; then
+    systemctl enable acornops-agentv-actions.socket
+  fi
+  if [[ -f "${transaction_dir}/candidate-actions-active" ]]; then
+    systemctl start acornops-agentv-actions.socket
+  fi
   systemctl enable acornops-agentv.service
   rm -f -- /run/acornops-agentv/authenticated
   # This helper runs in a unit ordered before AgentV. Queueing avoids waiting

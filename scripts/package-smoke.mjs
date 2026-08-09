@@ -72,6 +72,10 @@ try {
   if (!systemdInstaller.includes('diff -qr --no-dereference')) throw new Error('Systemd installer must verify an existing immutable release before reuse');
   if (!systemdInstaller.includes('[[ -L "${release_root}"')) throw new Error('Systemd installer must reject a symlinked immutable release directory');
   if (!installWorker.includes('mv -f /etc/acornops/.agentv.env.install /etc/acornops/agentv.env')) throw new Error('Bootstrap worker must install AgentV configuration with an atomic rename');
+  if (!installWorker.includes('mv -f /etc/acornops/.agentv-actions.json.install /etc/acornops/agentv-actions.json')) throw new Error('Bootstrap worker must install the AgentV action policy with an atomic rename');
+  if (!installRecovery.includes('candidate-actions.json') || !installRecovery.includes('previous-actions.json')) {
+    throw new Error('Boot recovery must preserve candidate and previous AgentV action policies');
+  }
   const releasePreflightOffset = installWorker.indexOf('AGENTV_INSTALL_VERIFY_ONLY=true');
   const enrollmentExchangeOffset = installWorker.indexOf('/api/v1/agentv/enrollments/exchange');
   if (releasePreflightOffset < 0 || enrollmentExchangeOffset < 0 || releasePreflightOffset > enrollmentExchangeOffset) {

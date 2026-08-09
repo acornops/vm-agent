@@ -53,7 +53,12 @@ describe('action helper boundary validation', () => {
     expect(validatePolicy({ schemaVersion: 1, restartServices: ['disposable-worker.service'] }).restartServices).toEqual(['disposable-worker.service']);
     expect(() => validatePolicy({ schemaVersion: 1, restartServices: ['*.service'] })).toThrow('invalid');
     expect(() => validatePolicy({ schemaVersion: 1, restartServices: ['acornops-agentv.service'] })).toThrow('invalid');
+    expect(() => validatePolicy({ schemaVersion: 1, restartServices: ['acornops-agentv-install-recovery.service'] })).toThrow('invalid');
     expect(() => validatePolicy({ schemaVersion: 1, restartServices: ['a.service', 'a.service'] })).toThrow('invalid');
+    expect(() => validatePolicy({
+      schemaVersion: 1,
+      restartServices: Array.from({ length: 33 }, (_, index) => `worker-${index}.service`),
+    })).toThrow('invalid');
     expect(() => validatePolicy({ schemaVersion: 1, restartServices: [], command: '/bin/true' })).toThrow('invalid');
   });
 
@@ -61,6 +66,7 @@ describe('action helper boundary validation', () => {
     expect(validateRestartRequest(request).unit).toBe('disposable-worker.service');
     expect(() => validateRestartRequest({ ...request, operation_id: 'unstable' })).toThrow('Invalid restart request');
     expect(() => validateRestartRequest({ ...request, unit: 'acornops-agentv-actions.service' })).toThrow('Invalid restart request');
+    expect(() => validateRestartRequest({ ...request, unit: 'acornops-agentv-install-recovery.service' })).toThrow('Invalid restart request');
     expect(() => validateRestartRequest({ ...request, expected_invocation_id: 'x'.repeat(129) })).toThrow('Invalid restart request');
     expect(() => validateRestartRequest({ ...request, reason: '' })).toThrow('Invalid restart request');
     expect(() => validateRestartRequest({ ...request, reason: '   ' })).toThrow('Invalid restart request');

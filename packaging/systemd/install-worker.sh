@@ -34,6 +34,33 @@ archive_path="${work_dir}/${archive_root}"
 runtime_version="$(/usr/bin/node -p "require('${archive_path}/runtime/package.json').version")"
 [[ "${runtime_version}" == "${release_version}" ]] || fail "verified archive version does not match the bootstrap"
 
+validate_action_policy() {
+  local policy_file="$1"
+  /usr/bin/node -e '
+    const fs=require("fs"),p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+    const unit=/^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,254}\.service$/;
+    const protectedUnit=(value)=>value==="acornops-agentv.service"||value.startsWith("acornops-agentv-");
+    if(!p||typeof p!=="object"||Array.isArray(p)||Object.keys(p).some((key)=>!['"'"'schemaVersion'"'"','"'"'restartServices'"'"'].includes(key))
+      ||p.schemaVersion!==1||!Array.isArray(p.restartServices)||p.restartServices.length>32
+      ||p.restartServices.some((value)=>typeof value!=="string"||!unit.test(value)||protectedUnit(value))
+      ||new Set(p.restartServices).size!==p.restartServices.length)process.exit(1);
+    process.stdout.write(String(p.restartServices.length));
+  ' "${policy_file}"
+}
+
+candidate_policy_file="${work_dir}/candidate-action-policy.json"
+printf '%s\n' '{"schemaVersion":1,"restartServices":[]}' > "${candidate_policy_file}"
+chmod 0600 "${candidate_policy_file}"
+access_mode=read_only
+managed_host_assets=(
+  /etc/systemd/system/acornops-agentv.service
+  /etc/systemd/system/acornops-agentv-actions.service
+  /etc/systemd/system/acornops-agentv-actions.socket
+  /etc/systemd/system/acornops-agentv-install-recovery.service
+  /usr/local/bin/acornops-agentv-doctor
+  /usr/local/sbin/acornops-agentv-install-recover
+)
+
 transaction_root=/var/lib/acornops-agentv/install-transactions
 active_transaction="${transaction_root}/active"
 if [[ -e "${active_transaction}" || -L "${active_transaction}" ]]; then
@@ -73,19 +100,30 @@ remove_initial_candidate() {
   [[ -n "${transaction_dir}" && ! -f "${transaction_dir}/previous-installation" ]] || return 0
   systemctl disable --now acornops-agentv.service acornops-agentv-actions.socket \
     acornops-agentv-install-recovery.service >/dev/null 2>&1 || true
-  if [[ ! -f "${transaction_dir}/previous-systemd-assets" ]]; then
-    rm -f -- /etc/systemd/system/acornops-agentv.service \
-      /etc/systemd/system/acornops-agentv-actions.service \
-      /etc/systemd/system/acornops-agentv-actions.socket \
-      /etc/systemd/system/acornops-agentv-install-recovery.service \
-      /usr/local/bin/acornops-agentv-doctor \
-      /usr/local/sbin/acornops-agentv-install-recover || return 1
-  fi
+  rm -f -- "${managed_host_assets[@]}" || return 1
   [[ -f "${transaction_dir}/previous-action-policy" ]] || rm -f -- /etc/acornops/agentv-actions.json || return 1
   if [[ ! -f "${transaction_dir}/previous-release-directory" ]]; then
     rm -rf -- "/opt/acornops/agentv/releases/${release_version}" || return 1
   fi
   systemctl daemon-reload
+}
+
+restore_previous_actions() {
+  systemctl disable --now acornops-agentv-actions.socket >/dev/null 2>&1 || true
+  systemctl stop acornops-agentv-actions.service >/dev/null 2>&1 || true
+  if [[ -f "${transaction_dir}/previous-actions.json" ]]; then
+    install -o root -g root -m 0600 "${transaction_dir}/previous-actions.json" /etc/acornops/.agentv-actions.json.rollback
+    mv -f /etc/acornops/.agentv-actions.json.rollback /etc/acornops/agentv-actions.json
+  else
+    rm -f -- /etc/acornops/agentv-actions.json
+  fi
+  systemctl daemon-reload
+  if [[ -f "${transaction_dir}/previous-actions-enabled" ]]; then
+    systemctl enable acornops-agentv-actions.socket
+  fi
+  if [[ -f "${transaction_dir}/previous-actions-active" ]]; then
+    systemctl start acornops-agentv-actions.socket
+  fi
 }
 
 restore_previous() {
@@ -105,7 +143,7 @@ restore_previous() {
   else
     rm -f -- /etc/acornops/agentv.env
   fi
-  systemctl daemon-reload
+  restore_previous_actions || return 1
   rm -f -- /run/acornops-agentv/authenticated
   if [[ -f "${transaction_dir}/previous-active" ]]; then
     systemctl restart acornops-agentv.service || return 1
@@ -179,6 +217,12 @@ has_existing_release=false
 [[ -L /opt/acornops/agentv/current ]] && has_existing_release=true
 [[ "${has_existing_env}" == "${has_existing_release}" ]] \
   || fail "existing AgentV installation is incomplete; generate a replacement-credential command after repairing or removing it"
+if [[ "${has_existing_env}" == false ]]; then
+  for host_asset in "${managed_host_assets[@]}"; do
+    [[ ! -e "${host_asset}" ]] \
+      || fail "existing AgentV systemd assets are incomplete; repair or remove the partial installation before enrolling"
+  done
+fi
 if [[ "${has_existing_env}" == true ]]; then
   had_previous_installation=true
   read -r env_uid env_group env_mode < <(stat -c '%u %G %a' /etc/acornops/agentv.env)
@@ -187,8 +231,29 @@ if [[ "${has_existing_env}" == true ]]; then
   existing_platform="$(sed -n "s/^ACORNOPS_AGENT_PLATFORM_URL='\([^']*\)'$/\1/p" /etc/acornops/agentv.env)"
   existing_target="$(sed -n "s/^ACORNOPS_TARGET_ID='\([^']*\)'$/\1/p" /etc/acornops/agentv.env)"
   mapfile -t existing_ca_settings < <(sed -n '/^ACORNOPS_AGENT_ADDITIONAL_CA_BUNDLE_FILE=/p' /etc/acornops/agentv.env)
+  mapfile -t existing_write_settings < <(sed -n '/^ACORNOPS_AGENT_WRITE_ENABLED=/p' /etc/acornops/agentv.env)
   [[ ${#existing_ca_settings[@]} -le 1 ]] || fail "existing AgentV environment contains duplicate additional CA settings"
+  [[ ${#existing_write_settings[@]} -eq 1 ]] || fail "existing AgentV environment must contain one write-access setting"
   [[ ${#existing_ca_settings[@]} -eq 0 ]] || preserved_ca_setting="${existing_ca_settings[0]}"
+  existing_write_enabled="${existing_write_settings[0]#ACORNOPS_AGENT_WRITE_ENABLED=}"
+  [[ "${existing_write_enabled}" == true || "${existing_write_enabled}" == false ]] \
+    || fail "existing AgentV write-access setting is invalid"
+  [[ -f /etc/acornops/agentv-actions.json ]] || fail "existing AgentV action policy is missing"
+  read -r policy_uid policy_mode < <(stat -c '%u %a' /etc/acornops/agentv-actions.json)
+  [[ "${policy_uid}" == 0 && $((8#${policy_mode} & 0022)) -eq 0 ]] \
+    || fail "existing AgentV action policy must be root-owned and not group/world writable"
+  existing_restart_service_count="$(validate_action_policy /etc/acornops/agentv-actions.json)" \
+    || fail "existing AgentV action policy is invalid"
+  if [[ "${existing_write_enabled}" == true ]]; then
+    [[ "${existing_restart_service_count}" -gt 0 ]] || fail "write-enabled AgentV requires at least one restart service"
+    access_mode=read_write
+  else
+    [[ "${existing_restart_service_count}" -eq 0 ]] || fail "read-only AgentV must have an empty restart-service policy"
+  fi
+  /usr/bin/node -e '
+    const fs=require("fs"),p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+    fs.writeFileSync(process.argv[2],JSON.stringify({schemaVersion:1,restartServices:p.restartServices})+"\n",{mode:0o600});
+  ' /etc/acornops/agentv-actions.json "${candidate_policy_file}"
   [[ "${existing_platform%/}" == "${platform_url%/}" && "${existing_target}" == "${target_id}" ]] || fail "existing AgentV installation belongs to a different platform or target"
   if [[ "${replace_credential}" == false ]]; then
     agent_key="$(sed -n "s/^ACORNOPS_AGENT_KEY='\([^']*\)'$/\1/p" /etc/acornops/agentv.env)"
@@ -240,16 +305,17 @@ printf '%s\n' prepared > "${transaction_dir}/phase"
 # first install while a working installation already exists.
 [[ "${had_previous_installation}" == true ]] && touch "${transaction_dir}/previous-installation"
 [[ -e "/opt/acornops/agentv/releases/${release_version}" ]] && touch "${transaction_dir}/previous-release-directory"
-[[ -e /etc/acornops/agentv-actions.json ]] && touch "${transaction_dir}/previous-action-policy"
-for host_asset in \
-  /etc/systemd/system/acornops-agentv.service \
-  /etc/systemd/system/acornops-agentv-actions.service \
-  /etc/systemd/system/acornops-agentv-actions.socket \
-  /etc/systemd/system/acornops-agentv-install-recovery.service \
-  /usr/local/bin/acornops-agentv-doctor \
-  /usr/local/sbin/acornops-agentv-install-recover; do
-  if [[ -e "${host_asset}" ]]; then touch "${transaction_dir}/previous-systemd-assets"; break; fi
-done
+if [[ -e /etc/acornops/agentv-actions.json ]]; then
+  touch "${transaction_dir}/previous-action-policy"
+  cp -p /etc/acornops/agentv-actions.json "${transaction_dir}/previous-actions.json"
+  chmod 0600 "${transaction_dir}/previous-actions.json"
+fi
+if systemctl is-enabled --quiet acornops-agentv-actions.socket 2>/dev/null; then
+  touch "${transaction_dir}/previous-actions-enabled"
+fi
+if systemctl is-active --quiet acornops-agentv-actions.socket; then
+  touch "${transaction_dir}/previous-actions-active"
+fi
 if [[ -L /opt/acornops/agentv/current ]]; then readlink -f /opt/acornops/agentv/current > "${transaction_dir}/previous-current"; fi
 if [[ -f /etc/acornops/agentv.env ]]; then cp -p /etc/acornops/agentv.env "${transaction_dir}/previous.env"; chmod 0600 "${transaction_dir}/previous.env"; fi
 if systemctl is-active --quiet acornops-agentv.service; then touch "${transaction_dir}/previous-active"; fi
@@ -277,25 +343,45 @@ if [[ "${existing_install}" != true || "${replace_credential}" == true ]]; then
   # shellcheck disable=SC2016
   /usr/bin/node -e '
     const fs=require("fs"),p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
-    const target=process.argv[6],enrollment=process.argv[7],purpose=process.argv[8];
+    const target=process.argv[8],enrollment=process.argv[9],purpose=process.argv[10];
     const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     const keyPrefix=`ak_${target}_`;
+    const unit=/^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,254}\.service$/;
+    const policy=p.accessPolicy;
+    const protectedUnit=(value)=>value==="acornops-agentv.service"||value.startsWith("acornops-agentv-");
     if(p.transactionId!==enrollment||!uuid.test(p.transactionId||"")
       ||typeof p.agentKey!=="string"||!p.agentKey.startsWith(keyPrefix)||!/^[A-Za-z0-9_-]{32}$/.test(p.agentKey.slice(keyPrefix.length))
       ||!/^avt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}_[0-9a-f]{32}$/i.test(p.transactionSecret||"")
-      ||p.purpose!==purpose)process.exit(1);
-    for(const [path,value] of [[process.argv[2],p.agentKey],[process.argv[3],p.transactionId],[process.argv[4],p.transactionSecret],[process.argv[5],p.purpose]])fs.writeFileSync(path,value,{mode:0o600});
+      ||p.purpose!==purpose||!policy||typeof policy!=="object"||Array.isArray(policy)
+      ||Object.keys(policy).some((key)=>!['"'"'accessMode'"'"','"'"'restartServices'"'"'].includes(key))
+      ||!['"'"'read_only'"'"','"'"'read_write'"'"'].includes(policy.accessMode)||!Array.isArray(policy.restartServices)
+      ||policy.restartServices.length>32||policy.restartServices.some((value)=>typeof value!=="string"||!unit.test(value)||protectedUnit(value))
+      ||new Set(policy.restartServices).size!==policy.restartServices.length
+      ||(policy.accessMode==="read_only"&&policy.restartServices.length!==0)
+      ||(policy.accessMode==="read_write"&&policy.restartServices.length===0))process.exit(1);
+    for(const [path,value] of [[process.argv[2],p.agentKey],[process.argv[3],p.transactionId],[process.argv[4],p.transactionSecret],[process.argv[5],p.purpose],[process.argv[6],policy.accessMode]])fs.writeFileSync(path,value,{mode:0o600});
+    fs.writeFileSync(process.argv[7],JSON.stringify({schemaVersion:1,restartServices:policy.restartServices})+"\n",{mode:0o600});
   ' "${response_file}" "${work_dir}/agent-key" "${work_dir}/transaction-id" "${work_dir}/transaction-secret" "${work_dir}/purpose" \
+    "${work_dir}/access-mode" "${work_dir}/enrollment-action-policy.json" \
     "${target_id}" "${expected_enrollment_id}" "${requested_purpose}" || fail "AgentV enrollment response was invalid"
   agent_key="$(<"${work_dir}/agent-key")"
   transaction_id="$(<"${work_dir}/transaction-id")"
   transaction_secret="$(<"${work_dir}/transaction-secret")"
   enrollment_purpose="$(<"${work_dir}/purpose")"
+  enrollment_access_mode="$(<"${work_dir}/access-mode")"
+  enrollment_policy_file="${work_dir}/enrollment-action-policy.json"
   if [[ "${replace_credential}" == true ]]; then
     [[ "${enrollment_purpose}" == replace ]] || fail "enrollment purpose did not authorize credential replacement"
   else
     [[ "${enrollment_purpose}" == initial ]] || fail "replacement enrollment requires --replace-credential"
   fi
+  # The token-bound enrollment is the control plane's authorization for the
+  # candidate policy. Ordinary replacements carry the already-applied policy;
+  # host-policy updates deliberately carry a different one. Repair commands do
+  # not exchange a token and continue to preserve the validated local policy.
+  access_mode="${enrollment_access_mode}"
+  cp "${enrollment_policy_file}" "${candidate_policy_file}"
+  chmod 0600 "${candidate_policy_file}"
   printf '%s' "${transaction_id}" > "${transaction_dir}/transaction-id"
   printf '%s' "${platform_url}" > "${transaction_dir}/platform-url"
   printf 'header = "x-agentv-transaction-secret: %s"\n' "${transaction_secret}" > "${transaction_dir}/curl.conf"
@@ -310,6 +396,8 @@ printf '%s\n' installing > "${transaction_dir}/phase"
 AGENTV_INSTALL_MANAGED_BOOTSTRAP=true bash "${archive_path}/packaging/systemd/install.sh"
 config_file="${work_dir}/agentv.env"
 umask 077
+write_enabled=false
+[[ "${access_mode}" == read_write ]] && write_enabled=true
 {
   printf "ACORNOPS_AGENT_PLATFORM_URL='%s'\n" "${platform_url}"
   printf '%s\n' "${preserved_ca_setting}"
@@ -319,18 +407,28 @@ umask 077
   printf '%s\n' 'ACORNOPS_AGENT_TARGET_TYPE=virtual_machine' 'ACORNOPS_AGENT_SNAPSHOT_INTERVAL_MS=60000' \
     'ACORNOPS_AGENT_MAX_SNAPSHOT_BYTES=1048576' 'ACORNOPS_AGENT_LOG_LEVEL=info' 'ACORNOPS_VM_OS_FAMILY=linux' \
     'ACORNOPS_VM_SERVICE_MANAGER=systemd' 'ACORNOPS_VM_ALLOWED_LOG_UNITS=acornops-agentv.service' \
-    'ACORNOPS_VM_COLLECTOR_MODE=live' 'ACORNOPS_AGENT_WRITE_ENABLED=false' 'ACORNOPS_AGENT_ACTIONS_SOCKET=/run/acornops-agentv/actions.sock'
+    'ACORNOPS_VM_COLLECTOR_MODE=live' "ACORNOPS_AGENT_WRITE_ENABLED=${write_enabled}" \
+    'ACORNOPS_AGENT_ACTIONS_SOCKET=/run/acornops-agentv/actions.sock'
 } > "${config_file}"
 install -o root -g acornops-agent -m 0640 "${config_file}" /etc/acornops/.agentv.env.install
 mv -f /etc/acornops/.agentv.env.install /etc/acornops/agentv.env
+install -o root -g root -m 0600 "${candidate_policy_file}" /etc/acornops/.agentv-actions.json.install
+mv -f /etc/acornops/.agentv-actions.json.install /etc/acornops/agentv-actions.json
 readlink -f /opt/acornops/agentv/current > "${transaction_dir}/candidate-current"
 cp -p /etc/acornops/agentv.env "${transaction_dir}/candidate.env"
 chmod 0600 "${transaction_dir}/candidate.env"
+cp -p /etc/acornops/agentv-actions.json "${transaction_dir}/candidate-actions.json"
+chmod 0600 "${transaction_dir}/candidate-actions.json"
 agent_key=""
 printf '%s\n' cutover > "${transaction_dir}/phase"
 
-systemctl disable --now acornops-agentv-actions.socket >/dev/null 2>&1 || true
 systemctl stop acornops-agentv-actions.service >/dev/null 2>&1 || true
+if [[ "${access_mode}" == read_write ]]; then
+  systemctl enable --now acornops-agentv-actions.socket
+  touch "${transaction_dir}/candidate-actions-enabled" "${transaction_dir}/candidate-actions-active"
+else
+  systemctl disable --now acornops-agentv-actions.socket >/dev/null 2>&1 || true
+fi
 acornops-agentv-doctor
 systemctl enable acornops-agentv.service
 rm -f -- /run/acornops-agentv/authenticated

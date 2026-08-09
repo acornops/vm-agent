@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-const unit = 'acornops-agentv-smoke-worker.service';
+const unit = 'acornops-smoke-worker.service';
 const runtime = '/opt/acornops/agentv/current';
 const { SocketActionClient } = await import(pathToFileURL(`${runtime}/dist/actions/client.js`).href);
 const client = new SocketActionClient('/run/acornops-agentv/actions.sock');

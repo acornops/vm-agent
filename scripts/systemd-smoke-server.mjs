@@ -14,10 +14,12 @@ const allowedTools = [
   'get_host_summary', 'list_filesystems', 'list_processes', 'get_process',
   'list_services', 'get_service', 'query_logs', 'list_listeners', 'restart_service',
 ];
+const accessPolicy = { accessMode: 'read_write', restartServices: ['acornops-smoke-worker.service'] };
 const enrollments = new Map([
+  ['aev_90909090-9090-4090-8090-909090909090_qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq', { transactionId: '90909090-9090-4090-8090-909090909090', key: 'ak_agentv-systemd-smoke_invalidpolicykey0000000000000000', state: 'issued', accessPolicy: { accessMode: 'read_write', restartServices: [] } }],
   ['aev_00000000-0000-4000-8000-000000000000_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz', { transactionId: '00000000-0000-4000-8000-000000000000', key: 'ak_agentv-systemd-smoke_failedinitialkey0000000000000000', state: 'issued' }],
   ['aev_11111111-1111-4111-8111-111111111111_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', { transactionId: '11111111-1111-4111-8111-111111111111', key: 'ak_agentv-systemd-smoke_systemdsmokekey00000000000000000', state: 'issued' }],
-  ['aev_22222222-2222-4222-8222-222222222222_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', { transactionId: '22222222-2222-4222-8222-222222222222', key: 'ak_agentv-systemd-smoke_rotatedsystemdsmokekey0000000000', state: 'issued' }],
+  ['aev_22222222-2222-4222-8222-222222222222_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', { transactionId: '22222222-2222-4222-8222-222222222222', key: 'ak_agentv-systemd-smoke_rotatedsystemdsmokekey0000000000', state: 'issued', accessPolicy: { accessMode: 'read_only', restartServices: [] } }],
   ['aev_33333333-3333-4333-8333-333333333333_ccccccccccccccccccccccccccccccccccccccccccc', { transactionId: '33333333-3333-4333-8333-333333333333', key: 'ak_agentv-systemd-smoke_pendingrecoverykey00000000000000', state: 'issued' }],
   ['aev_55555555-5555-4555-8555-555555555555_ddddddddddddddddddddddddddddddddddddddddddd', { transactionId: '55555555-5555-4555-8555-555555555555', key: 'ak_agentv-systemd-smoke_rotatedsystemdsmokekey0000000000', state: 'completed' }],
 ]);
@@ -38,7 +40,13 @@ const controlServer = createServer((request, response) => {
       const purpose = activeKey ? 'replace' : 'initial';
       if (body.purpose !== purpose) return send(401, { error: { code: 'INVALID_ENROLLMENT' } });
       enrollment.state = 'exchanged';
-      return send(200, { transactionId: enrollment.transactionId, transactionSecret: transactionSecret(enrollment.transactionId), agentKey: enrollment.key, purpose });
+      return send(200, {
+        transactionId: enrollment.transactionId,
+        transactionSecret: transactionSecret(enrollment.transactionId),
+        agentKey: enrollment.key,
+        purpose,
+        accessPolicy: enrollment.accessPolicy || accessPolicy
+      });
     }
     const match = /^\/api\/v1\/agentv\/installations\/([^/]+)\/(status|commit|rollback)$/.exec(pathname);
     const enrollment = match && [...enrollments.values()].find((item) => item.transactionId === match[1]);

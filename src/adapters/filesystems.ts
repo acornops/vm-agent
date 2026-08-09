@@ -6,7 +6,7 @@ const PSEUDO = new Set(['autofs', 'bpf', 'cgroup', 'cgroup2', 'configfs', 'debug
 type CommandRunner = typeof runCommand;
 type MountInfoReader = (signal?: AbortSignal) => Promise<string>;
 
-/** Parse GNU df POSIX-format output used on supported Debian and RHEL hosts. */
+/** Parse GNU df POSIX-format output represented by the Debian and RHEL fixtures. */
 export function parseFilesystemOutput(text: string): Map<string, { source: string; type: string; total: number; used: number; free: number; percent: number }> {
   const result = new Map<string, { source: string; type: string; total: number; used: number; free: number; percent: number }>();
   for (const line of text.trim().split('\n').slice(1)) {

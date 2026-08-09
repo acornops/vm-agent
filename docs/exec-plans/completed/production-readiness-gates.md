@@ -49,8 +49,8 @@ weaken runtime safety to satisfy the harness.
 
 ## Open Questions
 
-- RHEL live systemd qualification remains dependent on obtaining a suitable
-  hosted runner; replay fixtures remain mandatory meanwhile.
+- Additional Linux distributions remain outside the qualified first-release
+  baseline until they receive an equivalent live bootstrap and recovery gate.
 - Central metrics export remains a later observability decision because
   AgentV must remain outbound-only.
 
@@ -63,6 +63,6 @@ degraded WebSocket reconnect. The full suite now enforces coverage floors of
 validates the checksummed production archive, and both CI and release workflows
 now require a guarded live Ubuntu systemd/helper smoke. Local canonical
 validation, full coverage, package smoke, production dependency audit, shell
-lint, script syntax, and workflow YAML syntax pass. A first green hosted Ubuntu
-run and equivalent live RHEL evidence remain deployment qualification gates,
-not unverified claims in this plan.
+lint, script syntax, and workflow YAML syntax pass. A green hosted Ubuntu 24.04
+run remains the deployment qualification gate; other Linux families are outside
+the first-release support claim.

@@ -13,8 +13,9 @@ env:
   IMAGE_NAME: acornops/agentv
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
+  ubuntu-systemd-canary:
+    name: Ubuntu 24.04 live systemd gate
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,26 +35,9 @@ jobs:
           AGENTV_SYSTEMD_SMOKE_ALLOW: "true"
         run: sudo --preserve-env=CI,AGENTV_SYSTEMD_SMOKE_ALLOW bash scripts/systemd-smoke.sh
 
-  rocky-systemd-canary:
-    runs-on: [self-hosted, linux, x64, rocky-9, systemd, disposable]
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-      - name: Require the production Node path
-        run: test -x /usr/bin/node && test "$(/usr/bin/node -p "Number(process.versions.node.split('.')[0])")" -ge 22
-      - run: npm ci
-      - run: npm run validate:ci
-      - run: npm run smoke:package
-      - name: Run live Rocky Linux systemd release gate
-        run: sudo env CI=true AGENTV_SYSTEMD_SMOKE_ALLOW=true bash scripts/systemd-smoke.sh
-
   release:
-    needs: [validate, rocky-systemd-canary]
-    runs-on: ubuntu-latest
+    needs: ubuntu-systemd-canary
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       packages: write

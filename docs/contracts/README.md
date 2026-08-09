@@ -29,6 +29,13 @@ only to prove local runtime readiness, exposes no tools or telemetry, and
 reconnects until the installer commits the credential. Normal readiness is
 recorded only after a non-provisional authenticated handshake.
 
+Enrollment exchange returns a non-secret access-policy snapshot. Read-only
+requires an empty restart list. Read-write requires one to 32 unique exact
+non-AgentV `.service` units. The root installer validates and installs the
+snapshot. Ordinary credential replacement carries the already-applied policy;
+a host-policy update deliberately carries the new token-bound policy. Repair
+uses the validated local policy without contacting the enrollment endpoint.
+
 The installed tool policy is the intersection of compiled tools, remote
 `allowedTools`, remote write enablement, local write enablement, and helper
 capabilities. A connection-generation change revokes queued and future work.

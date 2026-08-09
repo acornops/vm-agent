@@ -80,7 +80,11 @@ expectIncludes(packageJson.scripts.validate, 'npm test', 'Canonical validate scr
 expectIncludes(packageJson.scripts.validate, 'npm run contracts:check', 'Canonical validate script');
 expectIncludes(packageJson.scripts.validate, 'npm run harness:check', 'Canonical validate script');
 expectIncludes(ciWorkflow, 'npm run validate:ci', 'CI should run canonical CI validation');
+expectIncludes(ciWorkflow, 'runs-on: ubuntu-24.04', 'CI live systemd host baseline');
 expectIncludes(releaseWorkflow, 'IMAGE_NAME: acornops/agentv', 'Release workflow image name');
+expectIncludes(releaseWorkflow, 'runs-on: ubuntu-24.04', 'Release live systemd host baseline');
+expectIncludes(releaseWorkflow, 'needs: ubuntu-systemd-canary', 'Release must wait for the live systemd gate');
+expect(!releaseWorkflow.includes('self-hosted'), 'Release workflow must not depend on unprovisioned self-hosted runners');
 expectIncludes(releaseWorkflow, 'provenance: true', 'Release workflow provenance');
 expectIncludes(releaseWorkflow, 'sbom: true', 'Release workflow SBOM');
 expect(!releaseWorkflow.includes(':latest'), 'Release workflow must not publish mutable latest tags');

@@ -46,8 +46,9 @@ validation helpers, and PR coordination workflow.
 - Keep this file short. Push durable protocol and operational rules into linked docs instead of adding ad hoc instructions here.
 - Keep the AgentV outbound-only.
 - Keep AgentV read-only by default. The only supported mutation is the
-  approval-gated `restart_service` tool through the exact-allowlist,
-  root-owned socket helper. Do not add shell execution, sudo, package changes,
+  run-policy-gated `restart_service` tool through the exact-allowlist,
+  root-owned socket helper. The default policy requires approval; an explicit
+  auto-run policy may allow this reviewed non-destructive action. Do not add shell execution, sudo, package changes,
   process kills, arbitrary filesystem mutation, or unrestricted systemctl.
 - Model OS family, service manager, collector mode, and log sources explicitly
   so Windows support can add adapters later.
